@@ -1,7 +1,11 @@
 ---
-title: "sterile_inflammation"
+title: "Introduction"
 ---
 
-```{r}
-1 + 1
-```
+This wesbite displays the analysis code and results for the sterile inflammation project in collaboration with Dr. Shweta Tikoo at the Deaprtment of Dermatology at the MedUni Wien.
+
+The project aims to define changes in transcriptional landscape of stromal cells and leukocytes post sterile inflammation. These cells coordinate the recruitment of diverse immune cell subsets from circulation to the inflammed tissue to restrict inflammation and promote tissue repair.
+
+The samples consist of FACS sorted cells from murine cremaster tissue under homeostasis or post-TNFa treatment at two different time points. The cells were then sequenced after cDNA libraries preparation.
+
+The analysis shown here focuses on the decisions that were made during analysis and demonstrates a range of tools that can be used for various tasks.

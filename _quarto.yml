@@ -1,20 +1,45 @@
 project:
   type: website
   output-dir: docs
-
 website:
-  title: "sterile_inflammation"
+  title: "Sterile inflammation"
   navbar:
-    left:
+    right:
       - href: index.qmd
         text: Home
-      - about.qmd
-
+      - text: "Analysis"
+        menu:
+          - text: "Empty droplets"
+            href: 01_empty_droplets.html
+  #       - text: "Quality control"
+  #         href: 02-quality-control.html
+  #       - text: "Clustering"
+  #         href: 03-clustering.html
+  #       - text: "Marker genes"
+  #         href: 04-marker-genes.html
+  #       - text: "PAGA"
+  #         href: 05-paga.html
+  #       - text: "Cell velocity"
+  #         href: 06-velocyto.html
+  #   - text: "Reports"
+  #     menu:
+  #       - text: "Cell Ranger"
+  #         href: cellranger_web_summary.html
+  #   - text: "Methods"
+  #     href: 90-methods.html
+  # right:
+  #   - text: "License"
+  #     href: license.html
+  #   - icon: fa-github
+  #     href: https://github.com/lazappi/phd-thesis-analysis
 format:
   html:
     theme: cosmo
     css: styles.css
     toc: true
-
 editor: visual
+execute:
+  freeze: auto
+
+
 

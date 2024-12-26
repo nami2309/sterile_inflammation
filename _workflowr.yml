@@ -6,3 +6,9 @@ seed: 20241225
 # The working directory to build the R Markdown files. The path is relative to
 # _workflowr.yml. See ?rmarkdown::render for details.
 knit_root_dir: "."
+
+# Manually insert session info
+sessioninfo: ""
+
+# Set link URL
+github: "https://github.com/nami2309/sterile_inflammation"
