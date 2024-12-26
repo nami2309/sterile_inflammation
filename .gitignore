@@ -24,3 +24,19 @@ renv/
 *.tmp
 *.log
 .DS_Store
+
+# Analysis files
+docs/analysis/cache*
+docs/analysis/site_libs
+
+# Data
+data/
+
+# Output
+output/
+
+# Cache
+analysis/cache/
+
+# Freeze
+_freeze/
