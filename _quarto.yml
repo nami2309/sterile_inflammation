@@ -1,6 +1,6 @@
 project:
   type: website
-  output-dir: docs/analysis/
+  output-dir: docs/
 website:
   title: "Sterile inflammation"
   navbar:
@@ -10,7 +10,7 @@ website:
       - text: "Analysis"
         menu:
           - text: "Empty droplets"
-            href: 01_empty_droplets.html
+            href: analysis/01_empty_droplets.html
   #       - text: "Quality control"
   #         href: 02-quality-control.html
   #       - text: "Clustering"
