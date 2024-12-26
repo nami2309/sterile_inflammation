@@ -12,7 +12,7 @@ website:
           - text: "Empty droplets"
             href: analysis/01_empty_droplets.html
   #       - text: "Quality control"
-  #         href: 02-quality-control.html
+  #         href: 02_quality_control.html
   #       - text: "Clustering"
   #         href: 03-clustering.html
   #       - text: "Marker genes"

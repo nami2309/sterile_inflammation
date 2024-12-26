@@ -1,5 +1,5 @@
 ---
-title: "01_empty_droplets"
+title: "01 Find empty droplets"
 ---
 
 ```{r knitr, include = FALSE}
