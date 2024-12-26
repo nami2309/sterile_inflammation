@@ -4,7 +4,7 @@ project:
 website:
   title: "Sterile inflammation"
   navbar:
-    right:
+    left:
       - href: index.qmd
         text: Home
       - text: "Analysis"
@@ -34,7 +34,7 @@ website:
   #     href: https://github.com/lazappi/phd-thesis-analysis
 format:
   html:
-    theme: cosmo
+    theme: Default
     css: styles.css
     toc: true
 editor: visual
