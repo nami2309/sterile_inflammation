@@ -40,3 +40,12 @@ analysis/cache/
 
 # Freeze
 _freeze/
+
+# PNG files
+*.png
+
+# PDF files
+*.pdf
+
+# HTML files
+*.html
