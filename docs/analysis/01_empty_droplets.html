@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>01 Find empty droplets – Sterile inflammation</title>
+<title>Empty droplets – Sterile inflammation</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,6 +19,40 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -66,8 +100,6 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
-<script src="../site_libs/kePrint-0.0.1/kePrint.js"></script>
-<link href="../site_libs/lightable-0.0.1/lightable.css" rel="stylesheet">
 
 
 <link rel="stylesheet" href="../styles.css">
@@ -102,6 +134,10 @@ ul.task-list li input[type="checkbox"] {
         <li>
     <a class="dropdown-item" href="../analysis/01_empty_droplets.html">
  <span class="dropdown-text">Empty droplets</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../analysis/02_quality_control.html">
+ <span class="dropdown-text">Quality control</span></a>
   </li>  
     </ul>
   </li>
@@ -140,7 +176,7 @@ ul.task-list li input[type="checkbox"] {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">01 Find empty droplets</h1>
+<h1 class="title">Empty droplets</h1>
 </div>
 
 
@@ -160,18 +196,135 @@ ul.task-list li input[type="checkbox"] {
 <section id="introduction" class="level1">
 <h1>Introduction</h1>
 <p>In this document we are going to read in the unfiltered counts matrix produced by <code>Cell Ranger</code> and determine which of those droplets contain cells using the <code>DropletUtils</code> package.</p>
+<div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>sample_names <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"PVM_0h"</span>, <span class="st">"PVEU_0h"</span>, <span class="st">"PVM_4h"</span>, </span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>                  <span class="st">"PVEU_4h"</span>, <span class="st">"PVM_7h"</span>, <span class="st">"PVEU_7h"</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Make an sce object of raw barcode counts</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co">#file_paths &lt;- file.path("data/cellranger_results",sample_names,"raw_feature_bc_matrix")</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>list_of_files <span class="ot">&lt;-</span> <span class="fu">str_c</span>(<span class="st">"~/Desktop/sterile_inflammation/data/cellranger_results/"</span>,sample_names,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"/raw_feature_bc_matrix"</span>)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>raw <span class="ot">&lt;-</span> <span class="fu">read10xCounts</span>(list_of_files, <span class="at">col.names=</span><span class="cn">TRUE</span>)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Add sample-specific prefixes to the raw SCE object</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>sample_prefixes <span class="ot">&lt;-</span> <span class="fu">rep</span>(sample_names, <span class="fu">sapply</span>(list_of_files, <span class="cf">function</span>(f) {</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ncol</span>(<span class="fu">read10xCounts</span>(f))</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(raw) <span class="ot">&lt;-</span> <span class="fu">paste0</span>(sample_prefixes, <span class="st">"_"</span>, <span class="fu">colnames</span>(raw))</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(raw) <span class="ot">&lt;-</span> <span class="fu">gsub</span>(<span class="st">"_1_"</span>, <span class="st">"_"</span>, <span class="fu">colnames</span>(raw))</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Repeat for filtered SCE object</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>list_of_files <span class="ot">&lt;-</span> <span class="fu">str_c</span>(<span class="st">"~/Desktop/sterile_inflammation/data/cellranger_results/"</span>, sample_names,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>                       <span class="st">"/filtered_feature_bc_matrix"</span>)</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>filtered <span class="ot">&lt;-</span> <span class="fu">read10xCounts</span>(list_of_files, <span class="at">col.names =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Add sample-specific prefixes to the filtered SCE object</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>sample_prefixes <span class="ot">&lt;-</span> <span class="fu">rep</span>(sample_names, <span class="fu">sapply</span>(list_of_files, <span class="cf">function</span>(f) {</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ncol</span>(<span class="fu">read10xCounts</span>(f))</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(filtered) <span class="ot">&lt;-</span> <span class="fu">paste0</span>(sample_prefixes, <span class="st">"_"</span>, <span class="fu">colnames</span>(filtered))</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(filtered) <span class="ot">&lt;-</span> <span class="fu">gsub</span>(<span class="st">"_1_"</span>, <span class="st">"_"</span>, <span class="fu">colnames</span>(filtered))</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify the updated barcodes</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">colnames</span>(raw))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "PVM_0h_AAACCTGAGAAACCTA-1" "PVM_0h_AAACCTGAGAACAACT-1"
+[3] "PVM_0h_AAACCTGAGAACTCGG-1" "PVM_0h_AAACCTGAGAAGATTC-1"
+[5] "PVM_0h_AAACCTGAGAAGCCCA-1" "PVM_0h_AAACCTGAGAATTCCC-1"</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">colnames</span>(filtered))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "PVM_0h_AAACCTGGTGCTAGCC-1" "PVM_0h_AAACCTGTCACATACG-1"
+[3] "PVM_0h_AAACCTGTCCTTGGTC-1" "PVM_0h_AAACGGGAGACAAGCC-1"
+[5] "PVM_0h_AAACGGGAGCCCGAAA-1" "PVM_0h_AAACGGGAGCCTATGT-1"</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Extract barcodes from raw and filtered SCE objects</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>raw_barcodes <span class="ot">&lt;-</span> <span class="fu">colnames</span>(raw)       <span class="co"># Barcodes in the raw SCE</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>filtered_barcodes <span class="ot">&lt;-</span> <span class="fu">colnames</span>(filtered) <span class="co"># Barcodes in the filtered SCE</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Update CellRangerFilt in the colData of raw</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>CellRangerFilt <span class="ot">&lt;-</span> raw_barcodes <span class="sc">%in%</span> filtered_barcodes</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co"># # Verify the result</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="co"># table(colData(raw)$CellRangerFilt)</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co"># #   FALSE    TRUE </span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="co"># # 2029157   39278 </span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="co"># </span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="co"># nrow(raw)</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="co"># # [1] 32285</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="co"># ncol(raw)</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="co"># # [1] 2068435</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
 <p>The raw object now contains the raw counts and metadata, with an additional column (CellRangerFilt) marking which cells passed Cell Ranger’s initial filtering. The raw dataset has 32285 features and 2068435 droplets at this point.</p>
-<p>The raw object is now pruned to exclude:</p>
-<pre><code>Genes that are not expressed in any cell.
-Droplets that do not contain any counts (empty droplets).</code></pre>
+<div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>raw <span class="ot">&lt;-</span> raw[Matrix<span class="sc">::</span><span class="fu">rowSums</span>(<span class="fu">counts</span>(raw)) <span class="sc">&gt;</span> <span class="dv">0</span>, Matrix<span class="sc">::</span><span class="fu">colSums</span>(<span class="fu">counts</span>(raw)) <span class="sc">&gt;</span> <span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>The raw object is now pruned to exclude: - Genes that are not expressed in any cell. - Droplets that do not contain any counts (empty droplets).</p>
 <p>After removing all zero features and droplets the dataset has 25634 features and 1445128 droplets.</p>
 </section>
 <section id="barcode-ranks" class="level1">
 <h1>Barcode ranks</h1>
 <p>Now we will compute barcode rank statistics and identify the knee and inflection points on the total count curve. All detected barcodes are ranked based on their total UMI counts. Barcodes with higher UMI counts (indicative of more RNA transcripts) are assigned higher ranks. Cell-associated barcodes typically have higher UMI counts. Background or empty droplet barcodes have low UMI counts.</p>
+<div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>empty_thresh <span class="ot">&lt;-</span> <span class="dv">100</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>bc_ranks <span class="ot">&lt;-</span> <span class="fu">barcodeRanks</span>(<span class="fu">counts</span>(raw), <span class="at">lower =</span> empty_thresh)</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>BarcodeRank   <span class="ot">&lt;-</span> bc_ranks<span class="sc">$</span>rank</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>BarcodeTotal  <span class="ot">&lt;-</span> bc_ranks<span class="sc">$</span>total</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>BarcodeFitted <span class="ot">&lt;-</span> bc_ranks<span class="sc">$</span>fitted</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>bc_data <span class="ot">&lt;-</span> <span class="fu">colData</span>(raw) <span class="sc">%&gt;%</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(Barcode, <span class="at">Kept =</span> CellRangerFilt, <span class="at">Rank =</span> BarcodeRank,</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>           <span class="at">Total =</span> BarcodeTotal, <span class="at">Fitted =</span> BarcodeFitted) <span class="sc">%&gt;%</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">arrange</span>(Rank)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
 <p>Let’s start by ordering the droplets according to their total counts and plotting this on a log scale. This lets us see the distribution of total counts.</p>
 <p>The shape of the barcode rank plot provides insights into the quality of the sample. A “cliff-and-knee” shape indicates a good distinction between cell-associated and background barcodes. The steep drop (cliff) represents a clear separation, while the plateau (knee) shows the presence of low-count background barcodes. If the plot lacks this clear structure, it may suggest poor sample quality or high background noise, which can complicate downstream analyses</p>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(bc_data, <span class="fu">aes</span>(<span class="at">x =</span> Rank, <span class="at">y =</span> Total)) <span class="sc">+</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_point</span>(<span class="at">shape =</span> <span class="dv">1</span>, <span class="fu">aes</span>(<span class="at">colour =</span> Kept)) <span class="sc">+</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">y =</span> Fitted), <span class="at">colour =</span> <span class="st">"red"</span>) <span class="sc">+</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> bc_ranks<span class="sc">@</span>metadata<span class="sc">$</span>knee,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>               <span class="at">colour =</span> <span class="st">"dodgerblue"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">annotate</span>(<span class="st">"text"</span>, <span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> bc_ranks<span class="sc">@</span>metadata<span class="sc">$</span>knee, <span class="at">label =</span> <span class="st">"Knee"</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">colour =</span> <span class="st">"dodgerblue"</span>, <span class="at">hjust =</span> <span class="dv">0</span>, <span class="at">vjust =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> bc_ranks<span class="sc">@</span>metadata<span class="sc">$</span>inflection,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>               <span class="at">colour =</span> <span class="st">"forestgreen"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">annotate</span>(<span class="st">"text"</span>, <span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> bc_ranks<span class="sc">@</span>metadata<span class="sc">$</span>inflection, <span class="at">label =</span> <span class="st">"Inflection"</span>,</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>             <span class="at">colour =</span> <span class="st">"forestgreen"</span>, <span class="at">hjust =</span> <span class="dv">0</span>, <span class="at">vjust =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> empty_thresh,</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>               <span class="at">colour =</span> <span class="st">"darkorchid"</span>, <span class="at">linetype =</span> <span class="st">"dashed"</span>) <span class="sc">+</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">annotate</span>(<span class="st">"text"</span>, <span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> empty_thresh, <span class="at">label =</span> <span class="st">"Empty threshold"</span>,</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>             <span class="at">colour =</span> <span class="st">"darkorchid"</span>, <span class="at">hjust =</span> <span class="dv">0</span>, <span class="at">vjust =</span> <span class="sc">-</span><span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_x_log10</span>(<span class="at">labels =</span> scales<span class="sc">::</span>number) <span class="sc">+</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_y_log10</span>(<span class="at">labels =</span> scales<span class="sc">::</span>number) <span class="sc">+</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"black"</span>, <span class="st">"violet"</span>)) <span class="sc">+</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ylab</span>(<span class="st">"Total counts"</span>) <span class="sc">+</span></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>()</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>p</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -179,14 +332,42 @@ Droplets that do not contain any counts (empty droplets).</code></pre>
 </figure>
 </div>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"output"</span>, DOCNAME, <span class="fu">paste0</span>(tag, <span class="st">"_1_barcodes_kept.png"</span>)), p,</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">7</span>, <span class="at">height =</span> <span class="dv">5</span>, <span class="at">scale =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 <p>This is typical of what we see for 10x experiment where there is a sharp drop off between droplets with lots of counts and those without many. The inflection and knee points are methods for identifying the transition between distributions. These are roughly associated with the cells selected by <code>Cell Ranger</code>. The empty threshold line indicates the point at which we assume droplets must be empty (total counts &lt;= 100).</p>
 </section>
 <section id="empty-drops" class="level1">
 <h1>Empty drops</h1>
 <p>We will now look at identifying which droplets to select using the <code>EmptyDrops</code> method. This method tests whether the composition of a droplet is significantly different from the ambient RNA in the sample which is obtained by pooling the empty droplets. Droplets with very large counts are also automatically retained.</p>
+<div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>emp_iters <span class="ot">&lt;-</span> <span class="dv">60000</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>emp_drops <span class="ot">&lt;-</span> <span class="fu">emptyDrops</span>(<span class="fu">counts</span>(raw), <span class="at">lower =</span> empty_thresh, <span class="at">niters =</span> emp_iters,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>                        <span class="at">test.ambient =</span> <span class="cn">TRUE</span>, <span class="at">BPPARAM =</span> bpparam)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
 <p><code>EmptyDrops</code> uses a permutation approach to calculate p-values, assessing the likelihood that a droplet’s RNA content could arise from ambient RNA alone. Ensuring a sufficient number of iterations (permutations) is vital for accurate p-value estimation. If there are any droplets that have non-significant p-values but are limited by the number of permuations, the number should be increased.</p>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>emp_fdr <span class="ot">&lt;-</span> <span class="fl">0.01</span> <span class="co">#Sets the FDR threshold (e.g., 1%) for determining significance.</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>is_cell <span class="ot">&lt;-</span> emp_drops<span class="sc">$</span>FDR <span class="sc">&lt;=</span> emp_fdr <span class="co">#Logical vector indicating whether each droplet's FDR is below the threshold, suggesting it contains a cell.</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>is_cell[<span class="fu">is.na</span>(is_cell)] <span class="ot">&lt;-</span> <span class="cn">FALSE</span> <span class="co">#Any NA values in is_cell are set to FALSE to avoid misclassification.</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>EmpDropsLogProb <span class="ot">&lt;-</span> emp_drops<span class="sc">$</span>LogProb <span class="co">#Log probability scores from EmptyDrops.</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>EmpDropsPValue  <span class="ot">&lt;-</span> emp_drops<span class="sc">$</span>PValue <span class="co">#Raw p-values indicating the likelihood of a droplet being a cell.</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>EmpDropsLimited <span class="ot">&lt;-</span> emp_drops<span class="sc">$</span>Limited <span class="co">#Indicator if the p-value calculation was limited by the number of permutations.</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>EmpDropsFDR <span class="ot">&lt;-</span> emp_drops<span class="sc">$</span>FDR <span class="co">#Adjusted p-values accounting for multiple testing (FDR).</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(raw)<span class="sc">$</span>EmpDropsFilt <span class="ot">&lt;-</span> is_cell <span class="co">#Logical flag indicating whether the droplet is considered a cell based on FDR.</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="fu">table</span>(<span class="at">Limited =</span> emp_drops<span class="sc">$</span>Limited, <span class="at">Significant =</span> is_cell)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>       Significant
 Limited   FALSE    TRUE
@@ -197,6 +378,18 @@ Limited   FALSE    TRUE
 <p>Limited: Indicates whether the p-value calculation for a droplet was limited by the number of permutations (TRUE = limited, FALSE = not limited). Significant: Indicates whether a droplet was deemed significant (i.e., likely to contain a cell) based on the FDR threshold (TRUE = significant, FALSE = not significant).</p>
 <p>Another way to check the <code>EmptyDrops</code> results is to look at the droplets below our empty threshold. We are assuming that these droplets only contain ambient RNA and therefore the null hypothesis should be true and the distribution of p-values should be approximately uniform.</p>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">colData</span>(raw) <span class="sc">%&gt;%</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(BarcodeTotal <span class="sc">&lt;=</span> empty_thresh,</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>           BarcodeTotal <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> EmpDropsPValue)) <span class="sc">+</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_histogram</span>() <span class="sc">+</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">xlab</span>(<span class="st">"p-value"</span>) <span class="sc">+</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>()</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>p</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -204,10 +397,28 @@ Limited   FALSE    TRUE
 </figure>
 </div>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"output"</span>, DOCNAME, <span class="fu">paste0</span>(tag, <span class="st">"_2_empty_droplets_distribution.png"</span>)), p,</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">7</span>, <span class="at">height =</span> <span class="dv">5</span>, <span class="at">scale =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 <p>Peaks near zero would tell us that not all of the droplets below the threshold are truly empty and that we should lower it.</p>
 <p>We can also plot the negative log-probability against the total counts to see which droplets <code>EmptyDrops</code> has selected.</p>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">colData</span>(raw) <span class="sc">%&gt;%</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(EmpDropsFilt)) <span class="sc">%&gt;%</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> BarcodeTotal, <span class="at">y =</span> <span class="sc">-</span>EmpDropsLogProb, <span class="at">colour =</span> EmpDropsFilt)) <span class="sc">+</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_point</span>() <span class="sc">+</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_colour_discrete</span>(<span class="at">name =</span> <span class="st">"Significant"</span>) <span class="sc">+</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">xlab</span>(<span class="st">"Total counts"</span>) <span class="sc">+</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ylab</span>(<span class="st">"-log(probability)"</span>) <span class="sc">+</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>()</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>p</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -215,6 +426,11 @@ Limited   FALSE    TRUE
 </figure>
 </div>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"output"</span>, DOCNAME, <span class="fu">paste0</span>(tag, <span class="st">"_3_empty_droplets_negative_prob.png"</span>)), p,</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">7</span>, <span class="at">height =</span> <span class="dv">5</span>, <span class="at">scale =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 <p>There were 1187710 droplets with less than 100 counts which were used to make up the ambient RNA pool. Of the remaining 257418 droplets 45819 were found to have profiles significantly different from the ambient RNA and should contain cells.</p>
 </section>
@@ -222,6 +438,24 @@ Limited   FALSE    TRUE
 <h1>Comparison</h1>
 <p>Let’s quickly compare differences between the selection methods using an UpSet plot:</p>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Prepare data for UpSet plot</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>plot_data <span class="ot">&lt;-</span> <span class="fu">colData</span>(raw) <span class="sc">%&gt;%</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(<span class="at">Name             =</span> Barcode,</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>           <span class="st">`</span><span class="at">Cell Ranger v3</span><span class="st">`</span> <span class="ot">=</span> CellRangerFilt,</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">EmptyDrops       =</span> <span class="st">`</span><span class="at">EmpDropsFilt</span><span class="st">`</span>,</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>           <span class="st">`</span><span class="at">Total counts</span><span class="st">`</span>   <span class="ot">=</span> BarcodeTotal) <span class="sc">%&gt;%</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="st">`</span><span class="at">Cell Ranger v3</span><span class="st">`</span> <span class="ot">=</span> <span class="fu">if_else</span>(<span class="st">`</span><span class="at">Cell Ranger v3</span><span class="st">`</span>, <span class="dv">1</span>L, <span class="dv">0</span>L),</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>           <span class="at">EmptyDrops       =</span> <span class="fu">if_else</span>(EmptyDrops,       <span class="dv">1</span>L, <span class="dv">0</span>L)) <span class="sc">%&gt;%</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="st">`</span><span class="at">Total counts</span><span class="st">`</span>   <span class="ot">=</span> <span class="fu">log10</span>(<span class="st">`</span><span class="at">Total counts</span><span class="st">`</span>))</span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Create UpSet plot</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a><span class="fu">upset</span>(plot_data, <span class="at">order.by =</span> <span class="st">"freq"</span>,</span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>      <span class="at">sets.x.label =</span> <span class="st">"Number of cells"</span>,</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>      <span class="at">text.scale =</span> <span class="fu">c</span>(<span class="dv">2</span>, <span class="fl">1.6</span>, <span class="dv">2</span>, <span class="fl">1.3</span>, <span class="dv">2</span>, <span class="dv">3</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -229,12 +463,32 @@ Limited   FALSE    TRUE
 </figure>
 </div>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># # Save plot as an image file</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="co"># comp_plot &lt;- grid.grab()  # Capture current plot</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="co"># </span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="co"># # Save the captured plot</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="co"># ggsave(here::here("output", DOCNAME, paste0(tag, "_4_compare_methods.png")), comp_plot,</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="co">#        width = 10, height = 5, scale = 1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 <p>We can see that most of the cells are identified by both methods. Our use of the <code>EmptyDrops</code> algorithm has identified even more cells than Cell Ranger v3 but there are very few cells that Cell Ranger identifed which <code>EmptyDrops</code> didn’t.</p>
 </section>
 <section id="selection" class="level1">
 <h1>Selection</h1>
 <p>We are going to perform further quality control of these cells anyway so at this stage we will keep those that were selected either by Cell Ranger v3 or by <code>EmptyDrops</code>.</p>
+<div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>selected <span class="ot">&lt;-</span> raw[, <span class="fu">colData</span>(raw)<span class="sc">$</span>CellRangerFilt <span class="sc">|</span> <span class="fu">colData</span>(raw)<span class="sc">$</span>EmpDropsFilt]</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>selected <span class="ot">&lt;-</span> selected[Matrix<span class="sc">::</span><span class="fu">rowSums</span>(<span class="fu">counts</span>(selected)) <span class="sc">&gt;</span> <span class="dv">0</span>, ]</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(selected)<span class="sc">$</span>SelMethod <span class="ot">&lt;-</span> <span class="st">"Both"</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(selected)<span class="sc">$</span>SelMethod[<span class="sc">!</span><span class="fu">colData</span>(selected)<span class="sc">$</span>CellRangerFilt] <span class="ot">&lt;-</span> <span class="st">"emptyDrops"</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="fu">colData</span>(selected)<span class="sc">$</span>SelMethod[<span class="sc">!</span><span class="fu">colData</span>(selected)<span class="sc">$</span>EmpDropsFilt] <span class="ot">&lt;-</span> <span class="st">"CellRanger"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
 </section>
 <section id="summary" class="level1">
 <h1>Summary</h1>
@@ -242,62 +496,148 @@ Limited   FALSE    TRUE
 <h2 class="anchored" data-anchor-id="parameters">Parameters</h2>
 <p>This table describes parameters used and set in this document.</p>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>params <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>        <span class="at">Parameter =</span> <span class="st">"n_droplets"</span>,</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>        <span class="at">Value =</span> <span class="fu">ncol</span>(raw),</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>        <span class="at">Description =</span> <span class="st">"Number of droplets in the raw dataset"</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>        <span class="at">Parameter =</span> <span class="st">"empty_thresh"</span>,</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>        <span class="at">Value =</span> empty_thresh,</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>        <span class="at">Description =</span> <span class="st">"Droplets with less than this many counts are empty"</span></span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>        <span class="at">Parameter =</span> <span class="st">"emp_iters"</span>,</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>        <span class="at">Value =</span> emp_iters,</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>        <span class="at">Description =</span> <span class="st">"Number of iterations for EmptyDrops p-values"</span></span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(</span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>        <span class="at">Parameter =</span> <span class="st">"emp_fdr"</span>,</span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>        <span class="at">Value =</span> emp_fdr,</span>
+<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a>        <span class="at">Description =</span> <span class="st">"FDR cutoff for EmptyDrops"</span></span>
+<span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb20-22"><a href="#cb20-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(</span>
+<span id="cb20-23"><a href="#cb20-23" aria-hidden="true" tabindex="-1"></a>        <span class="at">Parameter =</span> <span class="st">"n_cellranger"</span>,</span>
+<span id="cb20-24"><a href="#cb20-24" aria-hidden="true" tabindex="-1"></a>        <span class="at">Value =</span> <span class="fu">sum</span>(<span class="fu">colData</span>(raw)<span class="sc">$</span>CellRangerFilt),</span>
+<span id="cb20-25"><a href="#cb20-25" aria-hidden="true" tabindex="-1"></a>        <span class="at">Description =</span> <span class="st">"Number of cells selected by the Cell Ranger v3 method"</span></span>
+<span id="cb20-26"><a href="#cb20-26" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb20-27"><a href="#cb20-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(</span>
+<span id="cb20-28"><a href="#cb20-28" aria-hidden="true" tabindex="-1"></a>        <span class="at">Parameter =</span> <span class="st">"n_empdrops"</span>,</span>
+<span id="cb20-29"><a href="#cb20-29" aria-hidden="true" tabindex="-1"></a>        <span class="at">Value =</span> <span class="fu">sum</span>(<span class="fu">colData</span>(raw)<span class="sc">$</span>EmpDropsFilt),</span>
+<span id="cb20-30"><a href="#cb20-30" aria-hidden="true" tabindex="-1"></a>        <span class="at">Description =</span> <span class="st">"Number of cells selected by the EmptyDrops method"</span></span>
+<span id="cb20-31"><a href="#cb20-31" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb20-32"><a href="#cb20-32" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(</span>
+<span id="cb20-33"><a href="#cb20-33" aria-hidden="true" tabindex="-1"></a>        <span class="at">Parameter =</span> <span class="st">"n_cells"</span>,</span>
+<span id="cb20-34"><a href="#cb20-34" aria-hidden="true" tabindex="-1"></a>        <span class="at">Value =</span> <span class="fu">ncol</span>(selected),</span>
+<span id="cb20-35"><a href="#cb20-35" aria-hidden="true" tabindex="-1"></a>        <span class="at">Description =</span> <span class="st">"Number of cells selected"</span></span>
+<span id="cb20-36"><a href="#cb20-36" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb20-37"><a href="#cb20-37" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb20-38"><a href="#cb20-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-39"><a href="#cb20-39" aria-hidden="true" tabindex="-1"></a>params <span class="ot">&lt;-</span> jsonlite<span class="sc">::</span><span class="fu">toJSON</span>(params, <span class="at">pretty =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb20-40"><a href="#cb20-40" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(jsonlite<span class="sc">::</span><span class="fu">fromJSON</span>(params))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
-<table class="table table-striped caption-top table-sm small" data-quarto-postprocess="true">
+<table class="caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
-<th style="text-align: left;" data-quarto-table-cell-role="th">Parameter</th>
-<th style="text-align: left;" data-quarto-table-cell-role="th">Value</th>
-<th style="text-align: left;" data-quarto-table-cell-role="th">Description</th>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Description</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td style="text-align: left; width: 2cm;">n_droplets</td>
-<td style="text-align: left; width: 3cm;">1445128</td>
-<td style="text-align: left; width: 15cm;">Number o....</td>
+<td style="text-align: left;">n_droplets</td>
+<td style="text-align: left;">1445128</td>
+<td style="text-align: left;">Number o….</td>
 </tr>
 <tr class="even">
-<td style="text-align: left; width: 2cm;">empty_thresh</td>
-<td style="text-align: left; width: 3cm;">100</td>
-<td style="text-align: left; width: 15cm;">Droplets....</td>
+<td style="text-align: left;">empty_thresh</td>
+<td style="text-align: left;">100</td>
+<td style="text-align: left;">Droplets….</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left; width: 2cm;">emp_iters</td>
-<td style="text-align: left; width: 3cm;">60000</td>
-<td style="text-align: left; width: 15cm;">Number o....</td>
+<td style="text-align: left;">emp_iters</td>
+<td style="text-align: left;">60000</td>
+<td style="text-align: left;">Number o….</td>
 </tr>
 <tr class="even">
-<td style="text-align: left; width: 2cm;">emp_fdr</td>
-<td style="text-align: left; width: 3cm;">0.01</td>
-<td style="text-align: left; width: 15cm;">FDR cuto....</td>
+<td style="text-align: left;">emp_fdr</td>
+<td style="text-align: left;">0.01</td>
+<td style="text-align: left;">FDR cuto….</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left; width: 2cm;">n_cellranger</td>
-<td style="text-align: left; width: 3cm;">39278</td>
-<td style="text-align: left; width: 15cm;">Number o....</td>
+<td style="text-align: left;">n_cellranger</td>
+<td style="text-align: left;">39278</td>
+<td style="text-align: left;">Number o….</td>
 </tr>
 <tr class="even">
-<td style="text-align: left; width: 2cm;">n_empdrops</td>
-<td style="text-align: left; width: 3cm;">45819</td>
-<td style="text-align: left; width: 15cm;">Number o....</td>
+<td style="text-align: left;">n_empdrops</td>
+<td style="text-align: left;">45819</td>
+<td style="text-align: left;">Number o….</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left; width: 2cm;">n_cells</td>
-<td style="text-align: left; width: 3cm;">46155</td>
-<td style="text-align: left; width: 15cm;">Number o....</td>
+<td style="text-align: left;">n_cells</td>
+<td style="text-align: left;">46155</td>
+<td style="text-align: left;">Number o….</td>
 </tr>
 </tbody>
 </table>
-
-
 </div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># json_table &lt;- jsonlite::fromJSON(params)</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="co"># </span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="co"># knitr::kable(json_table, format = "html") %&gt;%</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="co">#   kable_styling(bootstrap_options = "striped", full_width = FALSE, position = "left") %&gt;%</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="co">#   scroll_box(width = "100%", height = "400px")</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 </section>
 <section id="output-files" class="level2">
 <h2 class="anchored" data-anchor-id="output-files">Output files</h2>
 <p>This table describes the output files produced by this document. Right click and <em>Save Link As…</em> to download the results (to be implemented).</p>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">save</span>(selected, <span class="at">file=</span>here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"output/processed/01_SI_selected.Robj"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>readr<span class="sc">::</span><span class="fu">write_lines</span>(params, here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"output"</span>, DOCNAME, <span class="st">"parameters.json"</span>))</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Assuming all calls return single strings</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>file_links <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">getDownloadLink</span>(<span class="st">"parameters.json"</span>, DOCNAME),</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">getDownloadLink</span>(<span class="st">"01_SI_1_barcodes_kept.png"</span>, DOCNAME),</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">getDownloadLink</span>(<span class="st">"01_SI_2_empty_droplets_distribution.png"</span>, DOCNAME),</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">getDownloadLink</span>(<span class="st">"01_SI_3_barcodes_negative_prob.png"</span>, DOCNAME),</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">getDownloadLink</span>(<span class="st">"01_SI_4_compare_methods.png"</span>, DOCNAME),</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">getDownloadLink</span>(<span class="st">"01_SI_selected.Robj"</span>, DOCNAME)</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Create data frame</span></span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>results_df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">File =</span> file_links,</span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">Description =</span> <span class="fu">c</span>(</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Parameters set and used in this analysis"</span>,</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Barcodes kept in CellRanger V3 (PNG)"</span>,</span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Distribution of empty droplets (PNG)"</span>,</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Negative log probability of barcode counts (PNG)"</span>,</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Compare both methods (PNG)"</span>,</span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>        <span class="st">"A SingleCellExperiment object of droplets that were called as cells by either Cell ranger v3 or Empty drops"</span></span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>    <span class="at">stringsAsFactors =</span> <span class="cn">FALSE</span>  <span class="co"># Optional: Prevent factors if not needed</span></span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a><span class="co"># Display table using knitr::kable</span></span>
+<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(results_df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -328,7 +668,7 @@ Limited   FALSE    TRUE
 <td style="text-align: left;">Compare both methods (PNG)</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;"><a href="https///github.com/nami2309/sterile_inflammation//main/output/01_empty_droplets/01_selected.Robj">01_selected.Robj</a></td>
+<td style="text-align: left;"><a href="https///github.com/nami2309/sterile_inflammation//main/output/01_empty_droplets/01_SI_selected.Robj">01_SI_selected.Robj</a></td>
 <td style="text-align: left;">A SingleCellExperiment object of droplets that were called as cells by either Cell ranger v3 or Empty drops</td>
 </tr>
 </tbody>
@@ -339,6 +679,10 @@ Limited   FALSE    TRUE
 <section id="session-information" class="level2">
 <h2 class="anchored" data-anchor-id="session-information">Session information</h2>
 <div class="cell" data-layout-align="center">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>devtools<span class="sc">::</span><span class="fu">session_info</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>─ Session info ───────────────────────────────────────────────────────────────
  setting  value
@@ -349,8 +693,8 @@ Limited   FALSE    TRUE
  language (EN)
  collate  en_US.UTF-8
  ctype    en_US.UTF-8
- tz       Europe/Bratislava
- date     2024-12-26
+ tz       Europe/Vienna
+ date     2025-01-01
  pandoc   3.1.1 @ /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/ (via rmarkdown)
 
 ─ Packages ───────────────────────────────────────────────────────────────────
