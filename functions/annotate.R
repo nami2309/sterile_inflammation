@@ -31,8 +31,7 @@ annotateSCE <- function(sce, org = c("human", "mouse"), add_anno = FALSE,
 
     if (calc_cpm) {
         if (verbose) {message("Calculating CPM...")}
-        SingleCellExperiment::cpm(sce) <- scater::calculateCPM(sce,
-                                                               use_size_factors = FALSE)
+        SingleCellExperiment::cpm(sce) <- scater::calculateCPM(sce)
     }
 
     if (calc_qc) {
@@ -40,11 +39,11 @@ annotateSCE <- function(sce, org = c("human", "mouse"), add_anno = FALSE,
         if ("chromosome_name" %in%
             colnames(SummarizedExperiment::rowData(sce))) {
             is_mt <- SummarizedExperiment::rowData(sce)$chromosome_name == "MT"
-            sce <- scater::calculateQCMetrics(sce,
+            sce <- scater::perCellQCMetrics(sce,
                                               feature_controls = list(MT = is_mt),
                                               BPPARAM = BPPARAM)
         } else {
-            sce <- scater::calculateQCMetrics(sce, BPPARAM = BPPARAM)
+            sce <- scater::perCellQCMetrics(sce, BPPARAM = BPPARAM)
         }
     }
 
@@ -79,7 +78,7 @@ addFeatureAnnos <- function(sce, org, host) {
                                      ids <- SummarizedExperiment::rowData(sce)$ID,
                                      filters = "ensembl_gene_id",
                                      attributes = c("ensembl_gene_id",
-                                                    "entrezgene",
+                                                    "entrezgene_id",
                                                     "external_gene_name",
                                                     symbol,
                                                     "chromosome_name",

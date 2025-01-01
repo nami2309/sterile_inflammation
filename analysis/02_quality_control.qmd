@@ -1,0 +1,1662 @@
+---
+title: "Quality control"
+format:
+  html:
+    theme: Default
+    toc: true
+    code-fold: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = "02_quality_control"
+NOW <- Sys.time()
+
+# Time chunks during knitting
+knitr::knit_hooks$set(timeit = function(before) {
+    if (before) {
+        print(paste("Start:", Sys.time()))
+        NOW <<- Sys.time()
+    } else {
+        print(paste("Stop:", Sys.time()))
+        print(Sys.time() - NOW)
+    }
+})
+
+knitr::opts_chunk$set(
+    autodep        = TRUE,
+    cache          = TRUE,
+    cache.path     = paste0("cache/", DOCNAME, "/"),
+    cache.comments = FALSE,
+    echo           = TRUE,
+    error          = FALSE,
+    fig.align      = "center",
+    fig.width      =  10,
+    fig.asp        = 0.8,
+    out.width      = "90%",
+    message        = FALSE,
+    warning        = FALSE,
+    timeit         = TRUE
+)
+knitr::opts_chunk$set(c("png", "jpg", "tiff", "ps"),
+                      dpi = 600,
+                      echo = FALSE)
+knitr::opts_chunk$set(fig.retina = 1)
+```
+
+```{r setup, message=FALSE, warning=FALSE, cache=FALSE, eval=TRUE}
+# Define sample names
+sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
+
+sample_colors <- c(
+  "PVM_0h"  = "#EE9A49",  
+  "PVM_4h"  = "#CD853F", 
+  "PVM_7h" = "#8B5A2B",  
+  "PVEU_0h"  = "#7EC0EE",
+  "PVEU_4h" = "#6CA6CD", 
+  "PVEU_7h" = "#4A708B"
+)
+
+script_number <- "02_"
+project <- "SI"
+tag <- paste0(script_number,project)
+
+proj_dir <- "/Users/nami/Desktop/sterile_inflammation"
+bpparam <- BiocParallel::MulticoreParam(workers = 6)
+options(future.globals.maxSize = 30 * 1024^3)
+```
+
+```{r libaries, cache = FALSE}
+# scRNA-seq
+library("SingleCellExperiment")
+# library("scater")
+# library("scran")
+library(Seurat)
+#library(singleCellTK)
+
+# RNA-seq
+#library("edgeR")
+
+# Plotting
+library("cowplot")
+library("gridExtra")
+library(patchwork)
+
+# Tidyverse
+library("tidyverse")
+
+library(here)
+#library("variancePartition")
+library(tidyr)
+library(dplyr)
+```
+
+```{r source, cache = FALSE}
+source(paste0(proj_dir, "/functions/universal.R"))
+```
+
+# Introduction
+
+In this document we are going to explore the dataset and filter it to remove low quality cells and lowly expressed genes. The goal is to have a high quality dataset that can be used for further analysis.
+
+First we will use size factors to normalize raw counts across cells to account for differences in sequencing depth or library size. Library size is the total number of counts (UMIs or reads) observed for a cell. Size factors are calc based on the total counts (library size) for each cell in the dataset. Cells with larger library sizes get higher size factors, and vice versa. Library size factors can differ by up to 10-fold across cells. This is typical of the variability in coverage in scRNA-seq data (see histogram below).
+
+Normalizing by size factors ensures that comparisons of gene expression across cells are not biased by variations in sequencing depth. We will plot library sizes against normalized counts to ensure that library sizes no longer drive the expression levels.
+
+We will then create a Seurat object with the cell barcodes that were found to be not empty droplets from our previous analysis. After normalizing, we will check that the normalized counts vs lib size in the seurat object recapitulate the findings in the SCE object. Once done, we will perform QC and PCA, and calculate tSNE and UMAP embeddings.
+
+```{r calc_libsize_normcounts, echo=TRUE, cache=FALSE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/01_SI_selected.Robj"))
+
+set.seed(1)
+sizeFactors(selected) <- librarySizeFactors(selected)
+# summary(sizeFactors(selected))
+# summary(colSums(counts(selected)))
+# plot(sizeFactors(selected), colSums(counts(selected)), log = "xy",
+#      xlab = "Size factor", ylab = "Library size",
+#      main = "Size factors vs library size")
+# abline(0, 1, col = "red")
+
+selected <- logNormCounts(selected)
+#02_SI_selected.Robj---------
+save(selected, file=here::here("output/processed/02_SI_selected.Robj"))
+```
+
+```{r create_sobj, echo=TRUE, cache=FALSE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_selected.Robj"))
+
+#Define sample names and file paths
+sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
+file_paths <- paste0("/Users/nami/Desktop/sterile_inflammation/data/cellranger_results/", sample_names, "/raw_feature_bc_matrix")
+
+# Initialize a list to store Seurat objects
+seurat_list <- list()
+
+# Loop through each sample to read data and create Seurat objects
+for (i in 1:length(sample_names)) {
+  data <- Read10X(data.dir = file_paths[i])
+  sobj <- CreateSeuratObject(counts = data, project = sample_names[i], min.cells = 0, min.features = 0)
+  sobj$sample <- sample_names[i]  # Add sample information
+  seurat_list[[sample_names[i]]] <- sobj
+}
+
+# Add metadata
+for (sample in sample_names) {
+  sobj <- seurat_list[[sample]]
+  # Extract time point from sample name
+  time_point <- sub(".*_(\\d+h).*", "\\1", sample)
+  # Assign condition based on time point
+  condition <- ifelse(time_point == "0h", "Control", "Post-TNFa")
+  sobj$time_point <- time_point
+  sobj$condition <- condition
+  seurat_list[[sample]] <- sobj
+}
+
+# Loop over each sample name in the seurat_list to seperate them
+for (sample_name in names(seurat_list)) {
+  # Extract the Seurat object from the list
+  sobj <- seurat_list[[sample_name]]
+  
+  # Assign the Seurat object to a variable with the sample name
+  assign(sample_name, sobj)
+}
+
+remove(sobj, data)
+
+# Combine seurat objects
+sobjects <- list(
+  PVM_0h = PVM_0h,
+  PVEU_0h = PVEU_0h,
+  PVM_4h = PVM_4h,
+  PVEU_4h = PVEU_4h,
+  PVM_7h = PVM_7h,
+  PVEU_7h = PVEU_7h
+)
+
+# Ensure the names correspond to sample names
+sample_names <- names(sobjects)
+
+# Append sample name as a prefix to each cell ID
+sobjects <- mapply(function(obj, sample_name) {
+  # Create new cell IDs by concatenating sample name and original cell ID
+  new_cell_ids <- paste0(sample_name, "_", colnames(obj))
+  
+  # Assign the new cell IDs to the Seurat object
+  colnames(obj) <- new_cell_ids
+  
+  # Return the modified Seurat object
+  return(obj)
+}, sobjects, names(sobjects), SIMPLIFY = FALSE)
+
+
+# Merge all Seurat objects with sample-specific prefixes
+sobj <- sobjects[[1]]
+
+# Iteratively merge the remaining Seurat objects
+for (i in 2:length(sobjects)) {
+  sobj <- merge(sobj, y = sobjects[[i]])
+}
+
+sobj <- JoinLayers(sobj)
+sobj
+# An object of class Seurat
+# 20495 features across 44902 samples within 1 assay
+# Active assay: RNA (20495 features, 0 variable features)
+# 1 layer present: counts
+
+table(sobj$orig.ident)
+# PVEU_0h PVEU_4h PVEU_7h  PVM_0h  PVM_4h  PVM_7h
+# 8642    9076    8841    5800    6853    5690
+
+# Check integrity of obj
+# List the assays present in the Seurat object
+Assays(sobj)
+
+# Check the default assay
+DefaultAssay(sobj)
+
+# Check if the main assay (e.g., RNA) exists and is non-empty
+sobj[["RNA"]]
+
+# Verify the structure of the merged object
+str(sobj)
+
+# Check the first few cell IDs
+head(colnames(sobj))
+
+# Extract columns from SCE metadata
+sce_metadata <- data.frame(
+  Sample = colnames(selected),  # Extract cell barcodes
+  CellBarcode = selected@colData@listData[["Barcode"]],
+  CellRangerFilt = selected@colData@listData[["CellRangerFilt"]],
+  EmpDropsFilt = selected@colData@listData[["EmpDropsFilt"]],
+  SelMethod = selected@colData@listData[["SelMethod"]]
+)
+
+# Check the updated CellBarcode values
+head(sce_metadata$CellBarcode)
+
+# Add prefix to CellBarcode
+sce_metadata$CellBarcode <- paste0(
+  str_extract(sce_metadata$Sample, "^[^_]*_[^_]*"), # Extract everything before the 2nd underscore
+  "_",
+  sce_metadata$CellBarcode # Append original CellBarcode
+)
+sce_metadata$CellBarcode
+
+# Preview the modified column
+head(sce_metadata$CellBarcode)
+
+# Subset the Seurat object to include only the common barcodes
+common_barcodes <- sce_metadata$CellBarcode
+sobj <- subset(sobj, cells = common_barcodes)
+dim(sobj)  
+
+# Add metadata to Seurat object
+# Ensure matching by CellBarcode
+rownames(sce_metadata) <- sce_metadata$CellBarcode
+sobj <- AddMetaData(sobj, metadata = sce_metadata)
+
+# Calculate percentage of mitochondrial genes
+sobj[["percent.mt"]] <- PercentageFeatureSet(object = sobj, pattern = "^mt-")
+
+# Add number of genes per UMI for each cell to metadata
+sobj$log10genes_per_UMI <- log10(sobj$nFeature_RNA) / log10(sobj$nCount_RNA)
+
+sobj@meta.data <- sobj@meta.data %>%
+  select(-Sample, -CellBarcode)
+
+# Modify the "sample" column in the meta.data slot
+sobj@meta.data[["sample"]] <- gsub("_.*$", "", sobj@meta.data[["sample"]])
+
+# Verify the changes
+head(sobj@meta.data[["sample"]])
+
+#02_SI_sobj.Robj---------
+save(sobj, file="/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj.Robj")
+
+# Normalize and scale
+sobj <- NormalizeData(
+  object = sobj,
+  normalization.method = "LogNormalize", # Log-normalization
+  scale.factor = 10000                   # Scaling factor
+)
+sobj <- ScaleData(sobj)
+#02_SI_sobj_scale.Robj---------
+save(sobj, file="/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_scale.Robj")
+```
+
+## Check lib size vs normalization
+
+::: panel-tabset
+
+### SCE {.unnumbered}
+
+```{r 02_SI_1_lib_size_vs_norm_counts, cache=FALSE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_selected.Robj"))
+hist(log10(sizeFactors(selected)), xlab="Log10[sizeFactors]", col='grey80')
+library_sizes <- colSums(counts(selected))
+mean_logcounts <- colMeans(assay(selected, "logcounts"))
+plot(log10(library_sizes), mean_logcounts, 
+     xlab = "Log10 library size", ylab = "Mean log-normalized counts",
+     main = "Normalized counts vs library size")
+abline(h = median(mean_logcounts), col = "red", lty = 2)
+rm(selected)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_1_lib_size_vs_norm_counts-1.png)
+
+![ ](02_quality_control_files/figure-html/02_SI_1_lib_size_vs_norm_counts-2.png)
+
+### Seurat {.unnumbered}
+
+```{r 02_SI_2_check_normalization_in_so, echo=TRUE, cache=FALSE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_scale.Robj"))
+# Extract library sizes
+library_sizes <- colSums(sobj@assays$RNA$counts)
+
+# Extract normalized data means
+mean_logcounts <- Matrix::colMeans(sobj@assays$RNA$data)
+
+# Plot size factors vs library sizes
+plot(log10(library_sizes), mean_logcounts,
+     xlab = "Log10 library size",
+     ylab = "Mean log-normalized counts",
+     main = "Normalized counts vs library size")
+abline(h = median(mean_logcounts), col = "red", lty = 2)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_2_check_normalization_in_so-1.png)
+
+:::
+
+# Exploration
+
+We will start off by making some plots to explore the dataset.
+
+## Expression by cell - MADs
+
+Distributions by cell. Blue line shows the median and red lines show median absolute deviations (MADs) from the median.
+
+::: panel-tabset
+
+### Total counts {.unnumbered}
+
+```{r 02_SI_3_counts_MADs, cache=FALSE, eval=FALSE, echo=TRUE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_scale.Robj"))
+outlierHistogramSeurat(sobj, feature="nCount_RNA", mads = 1:6)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_3_counts_MADs-1.png)
+
+
+### Total features {.unnumbered}
+
+```{r 02_SI_4_features_MADs, cache=FALSE, eval=FALSE, echo=TRUE}
+outlierHistogramSeurat(sobj, feature="nFeature_RNA", mads = 1:6)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_4_features_MADs-1.png)
+
+### Percent mitochondrial {.unnumbered}
+
+```{r 02_SI_5_percentmt_MADs, cache=FALSE, eval=FALSE, echo=TRUE}
+outlierHistogramSeurat(sobj, feature="percent.mt", mads = 1:6)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_5_percentmt_MADs-1.png)
+
+:::
+
+## Expression by cell - manual
+
+::: panel-tabset
+### nCount_RNA {.unnumbered}
+
+```{r 02_SI_6_nCount_RNA_before_filt, message=FALSE, warning=FALSE, echo=TRUE, eval=FALSE}
+p1 <- VlnPlot(sobj, 
+              features = c("nCount_RNA"), 
+              ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident",
+              cols = sample_colors, 
+              stack = FALSE) & geom_hline(yintercept =500, col="blue") 
+              annotate("text", x=0.5, y=1000, label="      500", size=2,color = "blue")
+
+# Visualize the number UMIs/transcripts per cell
+# UMI count should be above 500 low-end, expected
+# between 500-1000 counts, usable should have been sequenced more deeply
+p2 <- sobj@meta.data %>% 
+  ggplot(aes(color=orig.ident, x=nCount_RNA, fill= orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  ylab("Cell density") +
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) + 
+  geom_vline(xintercept = 500)
+  NoLegend()
+
+# FeatureScatter plot for nCount_RNA vs nFeature_RNA
+# Generate the FeatureScatter plot as a ggplot object
+p3 <- FeatureScatter(
+    object = sobj, 
+    group.by = "orig.ident",
+    split.by = NULL,
+    feature1 = "nCount_RNA", 
+    cols = sample_colors,
+    feature2 = "nFeature_RNA", 
+    shuffle = TRUE, 
+    plot.cor = FALSE
+)
+
+p3 <- p3 + 
+    geom_vline(xintercept = 500, color = "blue", linetype = "dashed") + 
+    geom_hline(yintercept = 300, color = "blue", linetype = "dashed") + 
+    annotate("text", x = 500, y = 4000, 
+             label = "500", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 30000, y = 300, 
+             label = "300", color = "blue", vjust = -0.5, hjust = -0.1)
+
+# FeatureScatter plot for nCount_RNA vs percent.mt
+p4 <- FeatureScatter(
+    object = sobj, 
+    group.by = "orig.ident",
+    split.by = NULL,
+    feature1 = "nCount_RNA", 
+    cols = sample_colors,
+    feature2 = "percent.mt", 
+    shuffle = TRUE, 
+    plot.cor = FALSE
+)  
+
+p4 <- p4 + 
+    geom_vline(xintercept = 500, color = "blue", linetype = "dashed") + 
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed") + 
+    annotate("text", x = 500, y = 75, 
+             label = "500", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 30000, y = 5, 
+             label = "5%", color = "red", vjust = -0.5, hjust = -0.1)
+
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+# poor quality cells likely to have low genes & UMIs per cell
+p5 <- sobj@meta.data %>% 
+  ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() + 
+  scale_y_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 250) +
+  facet_wrap(~orig.ident)
+
+p <- p1 + p2 + p3 + p4 + p5 + plot_layout(
+    ncol = 2, guides = "collect") + plot_annotation(
+        title = "Before filtering", 
+        tag_levels = "A")
+p
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_6_nCount_RNA_before_filt-1.png)
+
+### nFeature_RNA {.unnumbered}
+
+```{r 02_SI_7_nFeature_RNA_before_filt, echo=TRUE, eval=FALSE}
+p1 <- VlnPlot(sobj, 
+              features = c("nFeature_RNA"), 
+              ncol = 1, assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) & geom_hline(yintercept =300, col="blue") & #geom_hline(yintercept = 3500, col="red") & 
+              annotate("text", x=0.5, y=400, label="    300", size=2,color = "blue") #& 
+              #annotate("text", x=0.5, y=3600, label="    3500", size=2,color = "red") 
+# Visualize the distribution of genes detected per cell via histogram
+# single peak represents cells encapsulated
+# shoulder/bimodal distribution: 1.cells that failed, 2. biologically different types (quiescent cells, less complex cells,size)
+p2 <- sobj@meta.data %>% 
+  ggplot(aes(color=orig.ident, x=nFeature_RNA, fill= orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  theme_classic() +
+  scale_x_log10() + 
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) + #geom_vline(xintercept = 3500) +
+  geom_vline(xintercept = 300) & NoLegend()#cutoff at >400 ?
+
+p3 <- FeatureScatter(object = sobj, 
+                        group.by = "orig.ident",
+                        split.by = NULL,
+                        feature1 = "nCount_RNA", 
+                        cols = sample_colors,
+                        feature2 = "nFeature_RNA", 
+        shuffle = TRUE, plot.cor = FALSE)  & NoLegend()
+p3 <- p3 + 
+    geom_vline(xintercept = 500, color = "blue", linetype = "dashed") + 
+    geom_hline(yintercept = 300, color = "blue", linetype = "dashed") + 
+    annotate("text", x = 500, y = 4000, 
+             label = "500", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 30000, y = 300, 
+             label = "300", color = "blue", vjust = -0.5, hjust = -0.1)
+
+p4 <- FeatureScatter(object = sobj, 
+                        group.by = "orig.ident",
+                        split.by = NULL,
+                        feature1 = "nFeature_RNA", 
+                        cols = sample_colors,
+                        feature2 = "percent.mt", 
+        shuffle = TRUE, plot.cor = FALSE)  & NoLegend()
+p4 <- p4 + 
+    geom_vline(xintercept = 300, color = "blue", linetype = "dashed") + 
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed") + 
+    annotate("text", x = 300, y = 75, 
+             label = "300", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 30000, y = 5, 
+             label = "5%", color = "red", vjust = -0.5, hjust = -0.1)
+
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+# poor quality cells likely to have low genes & UMIs per cell
+p5 <- sobj@meta.data %>% 
+  ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() + 
+  scale_y_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 250) +
+  facet_wrap(~orig.ident)
+
+p <- p1 + p2 + p3 + p4 + p5 + plot_layout(
+    ncol = 2, guides = "collect") + plot_annotation(
+        title = "Before filtering", 
+        tag_levels = "A")
+p
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_7_nFeature_RNA_before_filt-1.png)
+
+### Percent mitochondrial {.unnumbered}
+
+```{r 02_SI_8_percentmt_before_filt, echo=TRUE, eval=FALSE}
+# Visualize the distribution of mitochondrial gene expression detected per cell
+# indication if there's large amount of mito-contamination f. dead/dying cells, above 0.2 mito ratio mark poor quality, unless expected differently 
+p1 <- VlnPlot(sobj, 
+              features = c("percent.mt"), 
+              ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) & geom_hline(yintercept = 10, col="red")& 
+              annotate("text", x=0.5, y=13, label="     5%", size=3,color = "red") 
+
+p2 <-sobj@meta.data %>%
+  ggplot(aes(color=orig.ident, x=percent.mt, fill=orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) +
+  scale_x_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 5) & NoLegend()
+
+# FeatureScatter plot for nCount_RNA vs percent.mt
+p3 <- FeatureScatter(
+    object = sobj, 
+    group.by = "orig.ident",
+    split.by = NULL,
+    feature1 = "nCount_RNA", 
+    cols = sample_colors,
+    feature2 = "percent.mt", 
+    shuffle = TRUE, 
+    plot.cor = FALSE
+)  
+
+p3 <- p3 + 
+    geom_vline(xintercept = 500, color = "blue", linetype = "dashed") + 
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed") + 
+    annotate("text", x = 500, y = 75, 
+             label = "500", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 30000, y = 5, 
+             label = "5%", color = "red", vjust = -0.5, hjust = -0.1)
+
+p4 <- FeatureScatter(object = sobj, 
+                        group.by = "orig.ident",
+                        split.by = NULL,
+                        feature1 = "nFeature_RNA", 
+                        cols = sample_colors,
+                        feature2 = "percent.mt", 
+        shuffle = TRUE, plot.cor = FALSE)  & NoLegend()
+p4 <- p4 + 
+    geom_vline(xintercept = 300, color = "blue", linetype = "dashed") + 
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed") + 
+    annotate("text", x = 300, y = 75, 
+             label = "300", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 30000, y = 5, 
+             label = "5%", color = "red", vjust = -0.5, hjust = -0.1)
+
+p <- p1 + p2 + p3 + p4 + plot_layout(
+    ncol = 2, guides = "collect") + plot_annotation(
+        title = "Before filtering", 
+        tag_levels = "A")
+p
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_8_percentmt_before_filt-1.png)
+
+### Log10 genes per UMI {.unnumbered}
+
+```{r 02_SI_9_log10genes_before_filt, echo=TRUE, eval=FALSE}
+p1 <- VlnPlot(sobj, 
+              features = c("log10genes_per_UMI"), 
+              ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) & geom_hline(yintercept = 0.8, col="blue") & 
+              annotate("text", x=0.7, y=0.81, label="0.8", size=3,color = "blue")  
+
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI
+# novelty score: ratio Genes/UMI
+# highUMI & low Genes = only little genes, sequences over again == low complexity/novelty; associated to cell type? or  artifact?
+# above 0.8
+p2 <- sobj@meta.data %>%
+  ggplot(aes(x=log10genes_per_UMI, color = orig.ident, fill=orig.ident)) +
+  geom_density(alpha = 0.2) +
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) +
+  theme_classic() +
+  geom_vline(xintercept = 0.8) & NoLegend()
+
+p <- p1 + p2 + plot_layout(
+    ncol = 2, guides = "collect") + plot_annotation(
+        title = "Before filtering", 
+        tag_levels = "A")
+p
+rm(sobj)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_9_log10genes_before_filt-1.png)
+
+:::
+
+# Filtering #1
+
+This is according to the previous plots. **Following parameters were used for filtering:**
+
+1.  300 \< nFeature_RNA
+
+2.  500 \< nCountRNA
+
+3.  percent.mt \< 5%
+
+4.  log10genes_per_UMI \> 0.8
+
+Cells with high nCount_RNA and nFeature_RNA are retained for now as they help in simulating doublets.
+
+```{r filtering, eval=FALSE, echo=TRUE}
+filtered_sobj <- subset(x = sobj,
+                   subset = (nFeature_RNA > 300) & #39911 
+                     #(nFeature_RNA < 4000) & #these cells with high featureRNA are needed to perform doublet identification later
+                     (nCount_RNA > 500) & #39249
+                     #(nCount_RNA < 20000) & 
+                     (log10genes_per_UMI > 0.80) & #39231
+                     (percent.mt < 5) #36838
+                     ) 
+filtered_sobj
+#32285 features across 36838 samples within 1 assay 
+
+#Remove genes that are not expressed in enough cells to be informative.
+
+layers <- c("counts")
+all_keep_genes <- list()
+
+for (layer in layers) {
+      counts <- LayerData(filtered_sobj, assay = "RNA", layer = layer)
+      nonzero <- counts > 0
+      keep_genes <- Matrix::rowSums(nonzero) >= 5 #Identifies genes expressed in at least 5 cells.
+     all_keep_genes[[layer]] <- rownames(counts)[keep_genes]
+}
+ common_keep_genes <- Reduce(base::intersect, all_keep_genes) #Finds genes that are common across all layers. Since there's only one layer, this is simply the list of genes expressed in at least 5 cells.
+ filtered_sobj <- subset(filtered_sobj, features = common_keep_genes)
+
+#Updating Assay Data with Filtered Genes
+for (layer in layers) {
+   counts <- LayerData(filtered_sobj, assay = "RNA", layer = layer)
+   filtered_counts <- counts[common_keep_genes, ]
+  filtered_sobj <- SetAssayData(filtered_sobj, assay = "RNA", slot = layer, new.data = filtered_counts)
+}
+ 
+filtered_sobj 
+#20635 features across 36838 samples within 1 assay 
+
+# Normalize and scale
+filtered_sobj <- NormalizeData(
+  object = filtered_sobj,
+  normalization.method = "LogNormalize", # Log-normalization
+  scale.factor = 10000                   # Scaling factor
+)
+filtered_sobj <- ScaleData(filtered_sobj)
+filtered_sobj <- FindVariableFeatures(filtered_sobj)
+filtered_sobj <- RunPCA(filtered_sobj, npcs=50)
+filtered_sobj <- RunUMAP(filtered_sobj, dims = 1:50)
+filtered_sobj <- FindNeighbors(filtered_sobj)
+filtered_sobj <- FindClusters(filtered_sobj)
+#02_SI_sobj_qc.Robj---------
+save(filtered_sobj, file="./output/processed/02_SI_sobj_qc.Robj")
+```
+
+## Post filtering #1 QC metrics
+
+```{r 02_SI_10_post_filtering_qc_metrics, echo=TRUE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_qc.Robj"))
+p1 <- VlnPlot(filtered_sobj, 
+              features = c("nFeature_RNA"), 
+              ncol = 1, assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) 
+p2 <- VlnPlot(filtered_sobj, 
+              features = c("nCount_RNA"), 
+              ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident",
+              cols = sample_colors, 
+              stack = FALSE)  
+p3 <- VlnPlot(filtered_sobj, 
+              features = c("percent.mt"),
+             ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) 
+
+p4 <- VlnPlot(filtered_sobj, 
+              features = c("log10genes_per_UMI"), 
+              ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) 
+
+# Visualize the distribution of genes detected per cell via histogram
+  # single peak represents cells encapsulated
+  # shoulder/bimodal distribution: 1.cells that failed, 2. biologically different types (quiescent cells, less complex cells,size)
+p5 <- filtered_sobj@meta.data  %>% 
+  ggplot(aes(color=orig.ident, x=nFeature_RNA, fill= orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  theme_classic() +
+  scale_x_log10() + 
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) + geom_vline(xintercept = 4000) +
+  geom_vline(xintercept = 300) & NoLegend()
+
+
+# Visualize the number UMIs/transcripts per cell
+  # UMI count should be above 500 low-end, expected
+  # between 500-1000 counts, usable should have been sequenced more deeply
+p6 <- filtered_sobj@meta.data %>% 
+  ggplot(aes(color=orig.ident, x=nCount_RNA, fill= orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  ylab("Cell density") +
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) + geom_vline(xintercept = 500) + 
+  geom_vline(xintercept = 20000) + 
+  NoLegend()
+
+# Visualize the distribution of mitochondrial gene expression detected per cell
+  # indication if there's large amount of mito-contamination f. dead/dying cells, above 0.2 mito ratio mark poor quality, unless expected differently 
+
+p7 <- filtered_sobj@meta.data %>%
+  ggplot(aes(color=orig.ident, x=percent.mt, fill=orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) +
+  scale_x_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 5) & NoLegend()
+
+
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI
+  # novelty score: ratio Genes/UMI
+  # highUMI & low Genes = only little genes, sequences over again == low complexity/novelty; associated to cell type? or  artifact?
+  # above 0.8
+p8 <- filtered_sobj@meta.data %>%
+  ggplot(aes(x=log10genes_per_UMI, color = orig.ident, fill=orig.ident)) +
+  geom_density(alpha = 0.2) +
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) +
+  theme_classic() +
+  geom_vline(xintercept = 0.8) & NoLegend()
+
+
+p <- p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + plot_layout(
+    ncol = 4, guides = "collect") + plot_annotation(
+        title = "After filtering", 
+        tag_levels = "A")
+p
+rm(filtered_sobj)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_10_post_filtering_qc_metrics-1.png)
+
+We have removed some extreme outliers but QC is always an iterative process, so we will look at some more factors to ensure only quality cells remain. We will also fine tune QC to set some sample-specific thresholds.
+
+**Cells with high nCount_RNA and nFeature_RNA are retained for now as they help in simulating doublets.**
+
+We will check for doublets next.
+
+# Doublet finder
+
+```{r run_doublet_finder, echo=TRUE, eval=FALSE}
+library(DoubletFinder)
+
+#Parameter sweep
+set.seed(123)
+sweep.res.list <- paramSweep(filtered_sobj, PCs = 1:20, sct = FALSE)
+sweep.stats <- summarizeSweep(sweep.res.list, GT = FALSE)
+bcmvn <- find.pK(sweep.stats)
+
+ggplot(bcmvn, aes(pK, BCmetric, group = 1)) +
+  geom_line() +
+  geom_point() +
+  theme_bw() +
+  ggtitle("pK selection")
+
+optimal_pK <- bcmvn$pK[which.max(bcmvn$BCmetric)]
+print(class(optimal_pK))
+optimal_pK <- as.numeric(as.character(optimal_pK))
+print(paste("Optimal pK:", optimal_pK))
+
+#Doublet formation rate - 5%
+nExp_poi <- round(0.05 * nrow(filtered_sobj@meta.data))  # Assuming 5% doublet formation rate
+filtered_sobj <- doubletFinder(filtered_sobj, PCs = 1:20, pN = 0.25, pK = optimal_pK,
+                               nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+#02_SI_sobj_df.Robj---------
+save(filtered_sobj, file="/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_df.Robj")
+```
+
+```{r 02_SI_11_doublets, echo=TRUE, cache=FALSE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_df.Robj"))
+
+p_doublets <- DimPlot(filtered_sobj, group.by = "DF.classifications_0.25_0.01_1842", label = F) +
+  NoAxes() +
+  ggtitle("")
+p_doublets
+
+counts_df <- filtered_sobj@meta.data %>%
+  group_by(seurat_clusters, DF.classifications_0.25_0.01_1842) %>%
+  summarise(Count = n()) %>%
+  ungroup() %>%
+  mutate(seurat_clusters = as.numeric(as.character(seurat_clusters))) %>%
+  arrange(seurat_clusters)
+
+# Calculate total counts per cluster and proportions
+counts_df <- counts_df %>%
+  group_by(seurat_clusters) %>%
+  mutate(Total = sum(Count)) %>%
+  ungroup() %>%
+  mutate(Proportion = Count / Total)
+
+# Create the bar plot with proportions
+p2 <- ggplot(counts_df, aes(x = factor(seurat_clusters, levels = sort(unique(seurat_clusters))), y = Proportion, fill = DF.classifications_0.25_0.01_1842)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.5) +
+  scale_fill_manual(values = c("Singlet" = "gray", "Doublet" = "red")) +
+  labs(title = "",
+       x = "",
+       y = "",
+       fill = "Classification") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(hjust = 1))
+
+p2
+
+rm(filtered_sobj)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_11_doublets-1.png)
+
+![ ](02_quality_control_files/figure-html/02_SI_11_doublets-2.png)
+
+# Filtering #2
+
+From the findings above, I filtered out the clusters enriched in doublets (clusters 23, 22, 20, 19) and also removed the doublets from other clusters.
+
+```{r filter_doublets, echo=TRUE, eval=FALSE, cache=FALSE}
+# Remove doublet enriched clusters
+sobj_post_df <- subset(filtered_sobj, idents = c(23, 22, 20, 19), invert = TRUE)
+sobj_post_df
+#20635 features across 36187 samples within 1 assay
+#651 cells removed
+
+# Remove doublets
+sobj_post_df <- subset(sobj_post_df, subset = DF.classifications_0.25_0.01_1842 != "Doublet")
+sobj_post_df
+#19268 features across 34824 samples within 1 assay
+#1363 cellls removed
+
+DimPlot(sobj_post_df, group.by = "DF.classifications_0.25_0.01_1842", label = F) +
+  NoAxes() +
+  ggtitle("")
+
+# Remove cells with high count and feature RNA
+sobj_post_df <- subset(x = sobj_post_df,
+                   subset = (nFeature_RNA < 4000) & #34708 left, 116 removed
+#these cells with high featureRNA were needed to perform doublet identification
+                     (nCount_RNA < 20000) )) #34694 left, 14 removed
+sobj_post_df
+#20635 features across 34694 samples within 1 assay
+
+sobj_post_df <- NormalizeData(
+  object = sobj_post_df,
+  normalization.method = "LogNormalize", # Log-normalization
+  scale.factor = 10000                   # Scaling factor
+)
+sobj_post_df <- ScaleData(sobj_post_df)
+sobj_post_df <- FindVariableFeatures(sobj_post_df)
+sobj_post_df <- RunPCA(sobj_post_df, npcs=50)
+sobj_post_df <- RunUMAP(sobj_post_df, dims = 1:50)
+sobj_post_df <- FindNeighbors(sobj_post_df)
+sobj_post_df <- FindClusters(sobj_post_df)
+sobj_post_df <- RunTSNE(sobj_post_df)
+sobj_post_df
+#20635 features across 34694 samples within 1 assay 
+#02_SI_sobj_post_df.Robj---------
+save(sobj_post_df, file="./output/processed/02_SI_sobj_post_df.Robj")
+```
+
+## Post filtering #2 QC metrics
+
+```{r 02_SI_12_post_df_filtering_qc_matrics, echo=TRUE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_post_df.Robj"))
+p1 <- VlnPlot(sobj_post_df, 
+              features = c("nFeature_RNA"), 
+              ncol = 1, assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) 
+p2 <- VlnPlot(sobj_post_df, 
+              features = c("nCount_RNA"), 
+              ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident",
+              cols = sample_colors, 
+              stack = FALSE)  
+p3 <- VlnPlot(sobj_post_df, 
+              features = c("percent.mt"),
+             ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) 
+
+p4 <- VlnPlot(sobj_post_df, 
+              features = c("log10genes_per_UMI"), 
+              ncol = 1, 
+              assay = "RNA", 
+              group.by = "orig.ident", 
+              cols = sample_colors, 
+              stack = FALSE) 
+
+# Visualize the distribution of genes detected per cell via histogram
+  # single peak represents cells encapsulated
+  # shoulder/bimodal distribution: 1.cells that failed, 2. biologically different types (quiescent cells, less complex cells,size)
+p5 <- sobj_post_df@meta.data  %>% 
+  ggplot(aes(color=orig.ident, x=nFeature_RNA, fill= orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  theme_classic() +
+  scale_x_log10() + 
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) + geom_vline(xintercept = 4000) +
+  geom_vline(xintercept = 300) & NoLegend()
+
+
+# Visualize the number UMIs/transcripts per cell
+  # UMI count should be above 500 low-end, expected
+  # between 500-1000 counts, usable should have been sequenced more deeply
+p6 <- sobj_post_df@meta.data %>% 
+  ggplot(aes(color=orig.ident, x=nCount_RNA, fill= orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  ylab("Cell density") +
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) + geom_vline(xintercept = 500) + 
+  geom_vline(xintercept = 20000) + 
+  NoLegend()
+
+# Visualize the distribution of mitochondrial gene expression detected per cell
+  # indication if there's large amount of mito-contamination f. dead/dying cells, above 0.2 mito ratio mark poor quality, unless expected differently 
+
+p7 <- sobj_post_df@meta.data %>%
+  ggplot(aes(color=orig.ident, x=percent.mt, fill=orig.ident)) + 
+  geom_density(alpha = 0.2) + 
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) +
+  scale_x_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 5) & NoLegend()
+
+
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI
+  # novelty score: ratio Genes/UMI
+  # highUMI & low Genes = only little genes, sequences over again == low complexity/novelty; associated to cell type? or  artifact?
+  # above 0.8
+p8 <- sobj_post_df@meta.data %>%
+  ggplot(aes(x=log10genes_per_UMI, color = orig.ident, fill=orig.ident)) +
+  geom_density(alpha = 0.2) +
+  scale_color_manual(values = sample_colors) +
+  scale_fill_manual(values = sample_colors) +
+  theme_classic() +
+  geom_vline(xintercept = 0.8) & NoLegend()
+
+# FeatureScatter plot for nCount_RNA vs nFeature_RNA
+# Generate the FeatureScatter plot as a ggplot object
+p9 <- FeatureScatter(
+    object = sobj_post_df, 
+    group.by = "orig.ident",
+    split.by = NULL,
+    feature1 = "nCount_RNA", 
+    cols = sample_colors,
+    feature2 = "nFeature_RNA", 
+    shuffle = TRUE, 
+    plot.cor = FALSE
+)
+
+p9 <- p9 + 
+    geom_vline(xintercept = 500, color = "blue", linetype = "dashed") + 
+    geom_vline(xintercept = 20000, color = "red", linetype = "dashed") + 
+    geom_hline(yintercept = 300, color = "blue", linetype = "dashed") + 
+    geom_hline(yintercept = 4000, color = "red", linetype = "dashed") + 
+    annotate("text", x = 500, y = 3500, 
+             label = "500", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+  annotate("text", x = 20000, y = 2500, 
+             label = "20000", color = "red", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 19000, y = 300, 
+             label = "300", color = "blue", vjust = -0.5, hjust = -0.1) +
+  annotate("text", x = 500, y = 3700, 
+             label = "4000", color = "red", vjust = -0.5, hjust = -0.1) 
+
+# FeatureScatter plot for nCount_RNA vs percent.mt
+p10 <- FeatureScatter(
+    object = sobj_post_df, 
+    group.by = "orig.ident",
+    split.by = NULL,
+    feature1 = "nFeature_RNA", 
+    cols = sample_colors,
+    feature2 = "percent.mt", 
+    shuffle = TRUE, 
+    plot.cor = FALSE
+)  
+
+p10 <- p10 + 
+    geom_vline(xintercept = 300, color = "blue", linetype = "dashed") + 
+    geom_vline(xintercept = 4000, color = "red", linetype = "dashed") + 
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed") + 
+    annotate("text", x = 300, y = 4, 
+             label = "300", color = "blue", vjust = -0.5, hjust = -0.1, angle = 90) +
+    annotate("text", x = 4000, y = 4.9, 
+             label = "5%", color = "red", vjust = -0.5, hjust = -0.1) +
+    annotate("text", x = 4000, y = 4, 
+             label = "4000", color = "red", vjust = -0.5, hjust = -0.1, angle = 90)
+
+p <- p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + plot_layout(
+    ncol = 4, guides = "collect") + plot_annotation(
+        title = "After filtering", 
+        tag_levels = "A")
+p
+
+p <- p9 + p10 + plot_layout(
+    ncol = 2, guides = "collect") + plot_annotation(
+        title = "After filtering", 
+        tag_levels = "A")
+p
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_12_post_df_filtering_qc_metrics-1.png)
+
+![ ](02_quality_control_files/figure-html/02_SI_12_post_df_filtering_qc_metrics-2.png)
+
+# Dimensionality reduction {.tabset}
+
+Dimensionality reduction plots coloured by technical factors can help identify if there are any factors driving the clusters in the dataset.
+
+::: panel-tabset
+### PCA
+
+```{r 02_SI_13_post_filtering_pca, echo=TRUE, eval=FALSE}
+# Calculate the variance explained by each PC
+pca_stdev <- Stdev(sobj_post_df, reduction = "pca")
+pca_variance <- pca_stdev^2
+pca_variance_explained <- round(100 * pca_variance / sum(pca_variance), 2)
+
+# Extract the percentages for PC1 and PC2
+pc1_variance <- pca_variance_explained[1]
+pc2_variance <- pca_variance_explained[2]
+
+# FeaturePlots with variance explained in the title
+p1 <- FeaturePlot(sobj_post_df, features = "nCount_RNA", reduction = "pca") +
+  ggtitle(paste0("nCount_RNA (PC1: ", pc1_variance, "%, PC2: ", pc2_variance, "%)"))
+
+
+p1 <- FeaturePlot(sobj_post_df, features = "nCount_RNA", reduction = "pca")
+p2 <- FeaturePlot(sobj_post_df, features = "nFeature_RNA", reduction = "pca")
+p3 <- FeaturePlot(sobj_post_df, features = "percent.mt", reduction = "pca")
+p4 <- FeaturePlot(sobj_post_df, features = "log10genes_per_UMI", reduction = "pca")
+p5 <- DimPlot(sobj_post_df, group.by = "SelMethod", reduction = "pca")
+p6 <- DimPlot(sobj_post_df, group.by = "sample", reduction = "pca")
+
+
+p <- p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(
+    ncol = 2) + plot_annotation(
+        title = (paste0("After filtering - PCA (PC1:", pc1_variance, "%, PC2:", pc2_variance, "%)")), 
+        tag_levels = "A")
+p
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_13_post_filtering_pca-1.png)
+
+### UMAP
+
+```{r 02_SI_14_post_filtering_umap, echo=TRUE, eval=FALSE}
+p1 <- FeaturePlot(sobj_post_df, features = "nCount_RNA", reduction = "umap")
+p2 <- FeaturePlot(sobj_post_df, features = "nFeature_RNA", reduction = "umap")
+p3 <- FeaturePlot(sobj_post_df, features = "percent.mt", reduction = "umap")
+p4 <- FeaturePlot(sobj_post_df, features = "log10genes_per_UMI", reduction = "umap")
+p5 <- DimPlot(sobj_post_df, group.by = "SelMethod", reduction = "umap")
+p6 <- DimPlot(sobj_post_df, group.by = "sample", reduction = "umap")
+
+p <- p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(
+    ncol = 2) + plot_annotation(
+        title = "After filtering - UMAP", 
+        tag_levels = "A")
+p
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_14_post_filtering_umap-1.png)
+
+### t-SNE
+
+```{r 02_SI_15_post_filtering_tsne, echo=TRUE, eval=FALSE}
+p1 <- FeaturePlot(sobj_post_df, features = "nCount_RNA", reduction = "tsne")
+p2 <- FeaturePlot(sobj_post_df, features = "nFeature_RNA", reduction = "tsne")
+p3 <- FeaturePlot(sobj_post_df, features = "percent.mt", reduction = "tsne")
+p4 <- FeaturePlot(sobj_post_df, features = "log10genes_per_UMI", reduction = "tsne")
+p5 <- DimPlot(sobj_post_df, group.by = "SelMethod", reduction = "tsne")
+p6 <- DimPlot(sobj_post_df, group.by = "sample", reduction = "tsne")
+
+p <- p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(
+    ncol = 2) + plot_annotation(
+        title = "After filtering - tsne", 
+        tag_levels = "A")
+p
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_15_post_filtering_tsne-1.png)
+
+:::
+
+Seems like there are no extreme clusters formed due to technical factors. Next, we will look at validating our filters by various means.
+
+# Validation
+
+## Gene expression
+
+The relationship between the number of cells that express a gene and the overall expression level can be interesting. We expect to see that higher expressed genes are expressed in more cells but there may be some that stand out from this. Since we already filtered out genes that were expressed in less than 5 cells, we dont expect outliers in that direction.
+
+```{r 02_SI_16_gene_exp_freq, echo=TRUE, eval=FALSE}
+# Get raw or normalized expression data
+expr_data <- GetAssayData(sobj_post_df, slot = "data")  # Log-normalized counts
+
+# Calculate percentage of cells expressing each gene
+pct_cells_expressing <- rowSums(expr_data > 0) / ncol(expr_data) * 100  # Percentage
+
+# Calculate mean expression for each gene
+mean_expression <- rowMeans(expr_data)
+
+# Combine into a data frame
+gene_stats <- data.frame(
+  Gene = rownames(expr_data),
+  PctCellsExpressing = pct_cells_expressing,
+  MeanExpression = mean_expression
+)
+
+# Count genes expressed in at least 50% and 25% of cells
+genes_50 <- sum(gene_stats$PctCellsExpressing >= 50)
+genes_25 <- sum(gene_stats$PctCellsExpressing >= 25)
+
+# Create the plot with axes switched
+p_gene_exp <- ggplot(gene_stats, aes(x = PctCellsExpressing, y = MeanExpression)) +
+  geom_point(alpha = 0.6) +  # Scatter points
+  geom_smooth(color = "red", se = TRUE) +  # Trend line
+  geom_vline(xintercept = 50, linetype = "dashed", color = "blue") +  
+  annotate("text", x = 47, y = 3,
+           label = paste0(genes_50, " genes ≥ 50%"), hjust = 0, angle = 90) +
+  geom_vline(xintercept = 25, linetype = "dashed", color = "blue") +  
+  annotate("text", x = 22, y = 3, 
+           label = paste0(genes_25, " genes ≥ 25%"), hjust = 0, angle = 90) +
+  scale_x_continuous(name = "Percentage of cells expressing", limits = c(0, 100)) +
+  scale_y_continuous(name = "Mean expression") +
+  theme_minimal()
+p_gene_exp
+#The outlier gene expressed in 100% cells and mean exp 5 is Gm42418
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_16_gene_exp_freq-1.png)
+
+## Gene variance
+
+This plot shows the percentage of variance in the dataset that is explained by various technical factors. I am using the variancePartition package which is designed to estimate the contribution of different factors to the variance of each gene's expression across the dataset to quantify how much each factor (e.g., sample, technical effects) contributes to the total variation in gene expression.
+
+For each gene in the dataset, it fits a linear mixed model (LMM) where the expression of the gene is modeled as a function of multiple explanatory variables (factors). The output is the percentage of variance in the gene's expression that can be attributed to each factor, in other words, the proportion of variance explained by each factor per gene.
+
+This is another way of validating our gene filtering. If the variance in a lot of genes is explained by technical factors, then we have to reconsider our filters.
+
+```{r variance_calc, echo=FALSE, eval=FALSE}
+library(variancePartition)
+# Extract metadata and counts
+meta_data <- sobj_post_df@meta.data
+expr_data <- GetAssayData(sobj_post_df, slot = "data")  # Use log-normalized counts
+
+# Calculate variance explained by different technical factors (continuous)
+form <- ~ nCount_RNA + nFeature_RNA + percent.mt 
+varPart <- fitExtractVarPartModel(expr_data, form, meta_data)
+
+# Sort variables by median fraction of variance explained
+vp <- sortCols(varPart)
+save(vp, file = "./output/processed/02_SI_variancePartition.Robj")
+```
+
+```{r 02_SI_17_variance, echo=TRUE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_variancePartition.Robj"))
+# Figure 1a
+# Bar plot of variance fractions for the first 10 genes
+# plotPercentBars(vp[1:10, ])
+
+# Variance explained by different technical factors
+plotVarPart(vp)
+
+# # Calculate variance explained by sample (categorical)
+# form <- ~ (1 | sample) + (1 | SelMethod) 
+# varPart_cat <- fitExtractVarPartModel(expr_data, form, meta_data)
+# 
+# # sort variables (i.e. columns) by median fraction
+# #       of variance explained
+# vp <- sortCols(varPart)
+# 
+# # Figure 1a
+# # Bar plot of variance fractions for the first 10 genes
+# # plotPercentBars(vp[1:10, ])
+# 
+# plotVarPart(vp)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_17_variance-1.png)
+
+Since most of the variance in gene expression in the dataset is explained by residuals, this means that we did not introduce any bias.
+
+## PCA outliers
+
+Another approach to validate our filters is to perform a PCA using technical factors instead of gene expression and then use outlier detection to identify low-quality cells.
+
+```{r 02_SI_18_pca_outliers_counts_features, echo=TRUE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_post_df.Robj"))
+# Define technical factors
+technical_factors <- c("nCount_RNA", "nFeature_RNA")
+
+# Subset metadata for PCA
+meta_data_pca <- sobj_post_df@meta.data[, technical_factors]
+
+# Perform PCA using prcomp
+pca_result <- prcomp(meta_data_pca, scale. = TRUE)
+summary(pca_result)  
+
+# Add PCA embeddings to the metadata
+pca_embeddings <- as.data.frame(pca_result$x)
+colnames(pca_embeddings) <- paste0("PC_", 1:ncol(pca_embeddings))
+sobj_post_df@meta.data <- cbind(sobj_post_df@meta.data, pca_embeddings)
+
+# Calculate Z-scores for the first principal component
+sobj_post_df@meta.data$outlier_nCountRNA <- abs(scale(sobj_post_df@meta.data$PC_1)) > 3  # Threshold: Z > 3
+
+# Calculate Z-scores for the second principal component
+sobj_post_df@meta.data$outlier_nFeatureRNA <- abs(scale(sobj_post_df@meta.data$PC_2)) > 4  # Threshold: Z > 4
+
+# Create a new column indicating whether the sample is an outlier in either condition
+sobj_post_df@meta.data$outlier <- sobj_post_df@meta.data$outlier_nCountRNA | sobj_post_df@meta.data$outlier_nFeatureRNA
+
+# Scatter plot of PCA results
+ggplot(sobj_post_df@meta.data, aes(x = PC_1, y = PC_2, color = outlier)) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  scale_color_manual(values = c("FALSE" = "grey", "TRUE" = "red")) +
+  labs(x = "PC 1", y = "PC 2", color = "Outlier")
+
+table(sobj_post_df@meta.data$outlier)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_18_pca_outliers_counts_features-1.png)
+
+Since we don't see any egregious outliers, our filtering did not introduce any bias.
+
+## Kept vs Lost
+
+One more thing we can look at is the expression level of genes between kept and removed cells. If we see known genes that are highly expressed in the removed cells that can indicate that we have removed an interesting population of cells from the dataset. The red line shows equal expression and the blue line is a linear fit.
+
+1.  X-Axis (LostCapped): Log average gene expression in removed cells.
+
+2.  Y-Axis (KeptCapped): Log average gene expression in kept cells.
+
+3.  Color (LostProp - KeptProp): Difference in proportion of cells expressing each gene between removed and kept populations. Positive values indicate a gene is more frequently expressed in the removed cells and vice versa. **Since most genes are negative, it means they are more prevalent in kept cells!**
+
+4.  Red Line: LostCapped = KeptCapped, indicating genes expressed equally in both removed and kept cells. Genes significantly above red line are more expressed in the kept cells and vice versa. **Majority of points cluster around the red line, especially for highly expressed genes. This is what we expect. There are some genes that have low average expression in removed cells (bottom right section under the red line) - these genes are typically indicative of poor quality cells (stressed, damaged, or empty droplets).**
+
+5.  Blue Line: Linear fit showing overall trend between gene expression in removed vs. kept. **The relationship is linear, so this is good - our filtering did not introduce any outliers!**
+
+```{r kept-lost, echo=TRUE, eval=FALSE, cache=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_scale.Robj"))
+
+# Determine which cells are kept
+pass_qc <- colnames(sobj) %in% colnames(sobj_post_df)
+
+# Add the pass_qc information to metadata
+sobj$pass_qc <- pass_qc
+
+save(sobj, file="/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_scale_pass_qc.Robj")
+```
+
+```{r 02_SI_19_genes_kept_lost_exp_freq, cache=FALSE, eval=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_scale_pass_qc.Robj"))
+
+library(tibble)
+library(dplyr)
+
+# Determine which cells are kept
+pass_qc <- colnames(sobj) %in% colnames(sobj_post_df)
+
+# Separate counts for kept and lost cells
+lost_counts <- as.matrix(sobj@assays[["RNA"]]@layers[["counts"]][, !pass_qc])
+kept_counts <- as.matrix(sobj@assays[["RNA"]]@layers[["counts"]][, pass_qc])
+
+# Check dimensions of lost and kept counts
+cat("Lost counts dimensions: ", dim(lost_counts), "\n")
+cat("Kept counts dimensions: ", dim(kept_counts), "\n")
+
+# Calculate average expression and detection proportion
+kept_lost <- tibble(
+    Gene     = rownames(sobj),
+    Lost     = rowMeans(lost_counts),
+    LostProp = rowSums(lost_counts > 0) / ncol(lost_counts),
+    Kept     = rowMeans(kept_counts),
+    KeptProp = rowSums(kept_counts > 0) / ncol(kept_counts)
+) %>%
+    # Calculate log fold change using a pseudo count for stability
+    mutate(LogFC = log2((Kept + 1) / (Lost + 1))) %>%
+    # Add capped values for stability in log-scale plots
+    mutate(
+        LostCapped = pmax(Lost, min(Lost[Lost > 0]) * 0.5),
+        KeptCapped = pmax(Kept, min(Kept[Kept > 0]) * 0.5)
+    )
+
+library(viridis)
+
+# Plot
+ggplot(kept_lost,
+       aes(x = LostCapped, y = KeptCapped, colour = LostProp - KeptProp)) +
+    geom_point(size = 1, alpha = 0.2) +
+    geom_abline(intercept = 0, slope = 1, colour = "red") +  # Red line for equality
+    geom_smooth(method = "lm", colour = "blue") +            # Blue line for linear fit
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_colour_viridis_c() +
+    xlab("Average count (removed)") +
+    ylab("Average count (kept)") +
+    theme_minimal()
+
+kept_lost %>%
+    select(Gene, LogFC, Lost, LostProp, Kept, KeptProp) %>%
+    arrange(-LogFC) %>%
+    as.data.frame() %>%
+    head(100)
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_19_genes_kept_lost_exp_freq-1.png)
+
+# Main figures
+
+## Thresholds
+
+```{r 02_SI_main_1_thresholds, echo=TRUE, eval=FALSE, cache=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_scale.Robj"))
+
+# Thresholds
+feature_lower <- 300
+feature_upper <- 4000
+count_lower <- 500
+count_upper <- 20000
+mt_thresh <- 5
+log10genes_thresh <- 0.8
+
+# Filtering results from the steps provided
+filter_steps <- data.frame(
+  Step = c(
+    "Initial Cells", 
+    "nFeature_RNA > 300", 
+    "nCount_RNA > 500",
+    "log10genes_per_UMI > 0.80", 
+    "percent.mt < 5",
+    "Doublets Removed",
+    "nFeature_RNA < 4000",
+    "nCount_RNA < 20000"
+  ),
+  Remaining_Cells = c(46155, 39911, 39249, 39231, 36838, 34824, 34708, 34694),
+  Removed_Cells = c(NA, -6244, -662, -18, -2393, -2014, -116, -14)
+)
+
+# Add metadata column for "Kept" based on all thresholds
+sobj@meta.data <- sobj@meta.data %>%
+  mutate(
+    Kept = nFeature_RNA > feature_lower & nFeature_RNA < feature_upper &
+           nCount_RNA > count_lower & nCount_RNA < count_upper &
+           percent.mt < mt_thresh & log10genes_per_UMI > log10genes_thresh
+  )
+
+# Prepare data for the Counts vs Features plot
+plot_data <- sobj@meta.data
+
+# Add filtering thresholds and removed cell info to the Counts vs Features plot
+exp_plot <- ggplot(plot_data, aes(x = nCount_RNA, y = nFeature_RNA, colour = Kept)) +
+  geom_point(alpha = 0.3) +
+  geom_vline(xintercept = count_lower, linetype = "dashed", colour = "#8DC63F") +
+  geom_vline(xintercept = count_upper, linetype = "dashed", colour = "#8DC63F") +
+  geom_hline(yintercept = feature_lower, linetype = "dashed", colour = "#7A52C7") +
+  geom_hline(yintercept = feature_upper, linetype = "dashed", colour = "#7A52C7") +
+  annotate("text", x = count_lower, y = Inf, label = paste("Removed:", -filter_steps$Removed_Cells[3]),
+           angle = 90, vjust = -0.5, hjust = 1, colour = "#8DC63F") +
+  annotate("text", x = count_upper, y = Inf, label = paste("Removed:", -filter_steps$Removed_Cells[8]),
+           angle = 90, vjust = -0.5, hjust = 1, colour = "#8DC63F") +
+  annotate("text", x = Inf, y = feature_lower, label = paste("Removed:", -filter_steps$Removed_Cells[2]),
+           vjust = -0.5, hjust = 1, colour = "#7A52C7") +
+  annotate("text", x = Inf, y = feature_upper, label = paste("Removed:", -filter_steps$Removed_Cells[7]),
+           vjust = -0.5, hjust = 1, colour = "#7A52C7") +
+  scale_colour_manual(values = c("#EC008C", "#00ADEF"), labels = c("Removed", "Kept")) +
+  labs(x = "nCount_RNA", y = "nFeature_RNA", colour = "", title = "nCount_RNA (300-20,000) vs nFeature_RNA (500-4000)") +
+  theme_minimal()
+
+# Add filtering thresholds and removed cell info to the Mitochondrial percentage plot
+mt_plot <- ggplot(plot_data, aes(x = percent.mt)) +
+  geom_histogram(bins = 100, fill = "#7A52C7", alpha = 0.7) +
+  geom_vline(xintercept = mt_thresh, linetype = "dashed", colour = "#EC008C") +
+  annotate("text", x = 8, y = Inf, label = paste("Removed:", -filter_steps$Removed_Cells[5]),
+           angle = 90, vjust = -0.5, hjust = 1, colour = "#EC008C") +
+  labs(x = "Percentage mitochondrial", y = "Number of cells", title = "Mitochondrial content (<5%)") +
+  theme_minimal()
+
+# Add filtering thresholds and removed cell info to the log10 Genes per UMI plot
+umi_plot <- ggplot(plot_data, aes(x = log10genes_per_UMI)) +
+  geom_histogram(bins = 100, fill = "#00ADEF", alpha = 0.7) +
+  geom_vline(xintercept = log10genes_thresh, linetype = "dashed", colour = "#EC008C") +
+  annotate("text", x = log10genes_thresh, y = Inf, label = paste("Removed:", -filter_steps$Removed_Cells[4]),
+           angle = 90, vjust = -0.5, hjust = 1, colour = "#EC008C") +
+  labs(x = "Log10 genes per UMI", y = "Number of cells", title = "Log10 genes per UMI (<0.8)") +
+  theme_minimal()
+
+# Use cowplot to add the annotation near the legend
+p_doublets <- ggdraw(p_doublets) + ggtitle("Doublets: removed 2014")
+
+# Combine all plots into a single figure
+fig <- plot_grid(
+  exp_plot, mt_plot, umi_plot, p_doublets,
+  labels = "AUTO", ncol = 2
+)
+fig
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_main_1_thresholds-1.png)
+
+## Validation
+
+```{r 02_SI_main_2_validation, echo=TRUE, eval=FALSE, cache=FALSE}
+load(paste0(proj_dir, "/output/processed/02_SI_sobj_scale_pass_qc.Robj"))
+library(ggrepel)
+
+# Determine which cells are kept
+pass_qc <- colnames(sobj) %in% colnames(sobj_post_df)
+
+# Separate counts for kept and lost cells
+lost_counts <- as.matrix(sobj@assays[["RNA"]]@layers[["counts"]][, !pass_qc])
+kept_counts <- as.matrix(sobj@assays[["RNA"]]@layers[["counts"]][, pass_qc])
+
+# Create a data frame for fold-change metrics
+kept_lost <- tibble(
+  Gene     = rownames(sobj),
+  Lost     = rowMeans(lost_counts),
+  LostProp = rowSums(lost_counts > 0) / ncol(lost_counts),
+  Kept     = rowMeans(kept_counts),
+  KeptProp = rowSums(kept_counts > 0) / ncol(kept_counts),
+  LogFC    = log2((rowMeans(kept_counts) + 1) / (rowMeans(lost_counts) + 1))
+)
+
+# Select the top 10 genes highly expressed in removed cells (lowest LogFC)
+top_removed_genes <- kept_lost %>%
+  arrange(LogFC) %>%
+  slice_head(n = 10)
+
+# Select the top 10 genes highly expressed in kept cells (highest LogFC)
+top_kept_genes <- kept_lost %>%
+  arrange(desc(LogFC)) %>%
+  slice_head(n = 10)
+
+# Add a column to indicate highlighted genes
+kept_lost <- kept_lost %>%
+  mutate(
+    Highlight = ifelse(Gene %in% c(top_removed_genes$Gene, top_kept_genes$Gene), Gene, NA)
+  )
+
+# Plot with highlighted genes
+fc_plot <- ggplot(kept_lost, aes(x = 0.5 * (Lost + Kept), y = LogFC, colour = LostProp - KeptProp)) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = 0, colour = "red") +
+  scale_x_log10(labels = scales::number_format(accuracy = 0.0001)) +
+  scale_colour_viridis_c(name = "Prop expressed (Removed) - Prop expressed (Kept)") +
+  ggtitle("Fold-change between removed and kept cells") +
+  xlab("0.5 * (Average expression (Kept) + Average expression (Removed))") +
+  ylab("Predicted log2 fold-change (Removed / Kept)") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  # Add labels for the top 10 genes
+  geom_text_repel(
+    data = filter(kept_lost, !is.na(Highlight)),
+    aes(label = Highlight),
+    max.overlaps = 10, colour = "black", size = 3
+  )
+
+# Create a table for top fold-change genes
+fc_table <- kept_lost %>%
+  select(Gene, LogFC) %>%
+  arrange(-LogFC) %>%
+  head(15) %>%
+  tableGrob(rows = NULL, theme = ttheme_minimal())
+
+feature_plots <- list(
+  FeaturePlot(sobj_post_df, features = "nCount_RNA") +
+    scale_colour_viridis_c() +
+    ggtitle("nCount_RNA") + NoAxes() + NoLegend(),
+  FeaturePlot(sobj_post_df, features = "nFeature_RNA") +
+    scale_colour_viridis_c() +
+    ggtitle("nFeature_RNA") + 
+    NoAxes() + NoLegend(),
+  FeaturePlot(sobj_post_df, features = "percent.mt") +
+    scale_colour_viridis_c() +
+    ggtitle("% mito") +
+    NoAxes() + NoLegend(),
+  FeaturePlot(sobj_post_df, features = "log10genes_per_UMI") +
+    scale_colour_viridis_c() +
+    ggtitle("Log10 genes per UMI") +
+    NoAxes() + NoLegend()
+)
+
+# Combine plots into a grid (2 columns)
+umap_plot <- wrap_plots(feature_plots, ncol = 2)
+
+# Combine fold-change plot and table
+p1 <- plot_grid(fc_plot, ncol = 1, labels = "AUTO")
+
+# Combine fold-change section with UMAP plots
+fig <- plot_grid(p1, umap_plot, ncol = 2, labels = c("", "B"),
+                 rel_heights = c(0.8, 1))
+
+# Display the figure
+fig
+```
+
+![ ](02_quality_control_files/figure-html/02_SI_main_2_validation-1.png)
+
+# Summary
+
+After quality control we have a dataset with 34,694 cells and 20,635 genes.
+
+## Parameters
+
+This table describes parameters used and set in this document.
+
+```{r params}
+# Filtering results from the steps provided
+filter_steps <- data.frame(
+  Step = c(
+    "Initial Cells", 
+    "nFeature_RNA > 300", 
+    "nCount_RNA > 500",
+    "log10genes_per_UMI > 0.80", 
+    "percent.mt < 5",
+    "Doublets Removed",
+    "nFeature_RNA < 4000",
+    "nCount_RNA < 20000"
+  ),
+  Remaining_Cells = c(46155, 39911, 39249, 39231, 36838, 34824, 34708, 34694),
+  Removed_Cells = c(NA, -6244, -662, -18, -2393, -2014, -116, -14)
+)
+
+# Define the parameter descriptions and thresholds
+parameter_descriptions <- c(
+  "Initial number of cells before filtering",
+  "Filter for cells with detected features above a minimum threshold",
+  "Filter for cells with total RNA counts above a minimum threshold",
+  "Filter for cells with sufficient gene complexity (log10 genes per UMI)",
+  "Filter for cells with mitochondrial percentage below a maximum threshold",
+  "Remove doublets identified using DoubletFinder",
+  "Filter for cells with detected features below a maximum threshold",
+  "Filter for cells with total RNA counts below a maximum threshold"
+)
+
+thresholds <- c(
+  NA,  # Initial step has no threshold
+  "> 300", 
+  "> 500", 
+  "> 0.80", 
+  "< 5%", 
+  "N/A",  # Doublet removal isn't tied to a threshold
+  "< 4000", 
+  "< 20000"
+)
+
+# Create the table
+filter_table <- data.frame(
+  Parameter = c("Initial Cells", "nFeature_RNA", "nCount_RNA", "log10genes_per_UMI", "percent.mt", "Doublets", "nFeature_RNA", "nCount_RNA"),
+  Description = parameter_descriptions,
+  Threshold = thresholds,
+  Cells_removed = abs(filter_steps$Removed_Cells),  # Absolute value for cells removed
+  Cells_remaining = filter_steps$Remaining_Cells
+)
+
+params <- jsonlite::toJSON(filter_table, pretty = TRUE)
+knitr::kable(jsonlite::fromJSON(params))
+
+#write.csv(filter_table, "./output/data/02_SI_qc_steps_summary.csv", row.names = FALSE)
+```
+
+## Output files
+
+This table describes the output files produced by this document. Right click and *Save Link As...* to download the results (to be implemented).
+
+```{r output, echo=TRUE, eval=FALSE, cache=FALSE}
+saved_files <- extract_saved_files("./analysis/02_quality_control.qmd")
+#saved_files <- saved_files[-c(1, 2), ]
+print(saved_files)
+write.csv(saved_files, file = paste0(proj_dir, "/output/data/02_SI_saved_files_summary.csv"))
+```
+
+```{r output_print, echo=TRUE, eval=TRUE, cache=FALSE}
+saved_files <- read.csv(file = paste0(proj_dir, "/output/data/02_SI_saved_files_summary.csv"))
+params <- jsonlite::toJSON(saved_files, pretty = TRUE)
+knitr::kable(jsonlite::fromJSON(params))
+```
+
+# Session information
+
+```{r session-info, cache = FALSE}
+devtools::session_info()
+```

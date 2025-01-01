@@ -1,8 +1,14 @@
 ---
-title: "01 Find empty droplets"
+title: "Empty droplets"
+freeze: true 
+format:
+  html:
+    code-fold: true
+execute:
+  echo: true
 ---
 
-```{r knitr, include = FALSE}
+```{r knitr, include = TRUE, echo=FALSE}
 DOCNAME = "01_empty_droplets"
 NOW <- Sys.time()
 
@@ -25,7 +31,7 @@ knitr::opts_chunk$set(
     echo           = TRUE,
     error          = FALSE,
     fig.align      = "center",
-    fig.width      =  15,
+    fig.width      =  10,
     fig.asp        = 0.8,
     out.width      = "90%",
     message        = FALSE,
@@ -38,7 +44,7 @@ knitr::opts_chunk$set(c("png", "jpg", "tiff", "ps"),
 knitr::opts_chunk$set(fig.retina = 1)
 ```
 
-```{r setup, message=FALSE, warning=FALSE, cache=FALSE, include=TRUE}
+```{r setup, message=FALSE, warning=FALSE, cache=FALSE, include=TRUE, echo=FALSE}
 # Define sample names
 sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
 
@@ -58,7 +64,7 @@ tag <- paste0(script_number,project)
 bpparam <- BiocParallel::MulticoreParam(workers = 6)
 ```
 
-```{r libaries, cache = FALSE}
+```{r libaries, cache = FALSE, include=TRUE, echo=FALSE}
 #if (!require("BiocManager", quietly = TRUE))
 #    install.packages("BiocManager")
 #BiocManager::install("DropletUtils")
@@ -78,7 +84,7 @@ library(here)
 library(kableExtra)
 ```
 
-```{r source, cache = FALSE}
+```{r source, cache = FALSE, echo=FALSE}
 source(here::here("functions/load.R"))
 source(here::here("functions/annotate.R"))
 source(here::here("functions/output.R"))
@@ -88,7 +94,7 @@ source(here::here("functions/output.R"))
 
 In this document we are going to read in the unfiltered counts matrix produced by `Cell Ranger` and determine which of those droplets contain cells using the `DropletUtils` package.
 
-```{r load}
+```{r load, echo=TRUE}
 sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", 
                   "PVEU_4h", "PVM_7h", "PVEU_7h")
 
@@ -98,10 +104,31 @@ list_of_files <- str_c("~/Desktop/sterile_inflammation/data/cellranger_results/"
                    "/raw_feature_bc_matrix")
 raw <- read10xCounts(list_of_files, col.names=TRUE)
 
-# Make an sce object of filtered barcode counts
-list_of_files <- str_c("~/Desktop/sterile_inflammation/data/cellranger_results/",sample_names,
-                   "/filtered_feature_bc_matrix")
-filtered <- read10xCounts(list_of_files, col.names=TRUE)
+# Add sample-specific prefixes to the raw SCE object
+sample_prefixes <- rep(sample_names, sapply(list_of_files, function(f) {
+  ncol(read10xCounts(f))
+}))
+
+colnames(raw) <- paste0(sample_prefixes, "_", colnames(raw))
+colnames(raw) <- gsub("_1_", "_", colnames(raw))
+
+# Repeat for filtered SCE object
+list_of_files <- str_c("~/Desktop/sterile_inflammation/data/cellranger_results/", sample_names,
+                       "/filtered_feature_bc_matrix")
+
+filtered <- read10xCounts(list_of_files, col.names = TRUE)
+
+# Add sample-specific prefixes to the filtered SCE object
+sample_prefixes <- rep(sample_names, sapply(list_of_files, function(f) {
+  ncol(read10xCounts(f))
+}))
+
+colnames(filtered) <- paste0(sample_prefixes, "_", colnames(filtered))
+colnames(filtered) <- gsub("_1_", "_", colnames(filtered))
+
+# Verify the updated barcodes
+head(colnames(raw))
+head(colnames(filtered))
 
 # Extract barcodes from raw and filtered SCE objects
 raw_barcodes <- colnames(raw)       # Barcodes in the raw SCE
@@ -110,9 +137,11 @@ filtered_barcodes <- colnames(filtered) # Barcodes in the filtered SCE
 # Update CellRangerFilt in the colData of raw
 colData(raw)$CellRangerFilt <- raw_barcodes %in% filtered_barcodes
 
-# Verify the result
-#table(colData(raw)$CellRangerFilt)
-
+# # Verify the result
+# table(colData(raw)$CellRangerFilt)
+# #   FALSE    TRUE 
+# # 2029157   39278 
+# 
 # nrow(raw)
 # # [1] 32285
 # ncol(raw)
@@ -121,14 +150,11 @@ colData(raw)$CellRangerFilt <- raw_barcodes %in% filtered_barcodes
 
 The raw object now contains the raw counts and metadata, with an additional column (CellRangerFilt) marking which cells passed Cell Ranger's initial filtering. The raw dataset has `r nrow(raw)` features and `r ncol(raw)` droplets at this point.
 
-```{r all-zero}
+```{r all-zero, echo=TRUE}
 raw <- raw[Matrix::rowSums(counts(raw)) > 0, Matrix::colSums(counts(raw)) > 0]
 ```
 
-The raw object is now pruned to exclude:
-
-    Genes that are not expressed in any cell.
-    Droplets that do not contain any counts (empty droplets).
+The raw object is now pruned to exclude: - Genes that are not expressed in any cell. - Droplets that do not contain any counts (empty droplets).
 
 After removing all zero features and droplets the dataset has `r nrow(raw)` features and `r ncol(raw)` droplets.
 
@@ -136,7 +162,7 @@ After removing all zero features and droplets the dataset has `r nrow(raw)` feat
 
 Now we will compute barcode rank statistics and identify the knee and inflection points on the total count curve. All detected barcodes are ranked based on their total UMI counts. Barcodes with higher UMI counts (indicative of more RNA transcripts) are assigned higher ranks. Cell-associated barcodes typically have higher UMI counts. Background or empty droplet barcodes have low UMI counts.
 
-```{r barcodes}
+```{r barcodes, echo=TRUE}
 empty_thresh <- 100
 
 bc_ranks <- barcodeRanks(counts(raw), lower = empty_thresh)
@@ -156,7 +182,7 @@ Let's start by ordering the droplets according to their total counts and plottin
 
 The shape of the barcode rank plot provides insights into the quality of the sample. A "cliff-and-knee" shape indicates a good distinction between cell-associated and background barcodes. The steep drop (cliff) represents a clear separation, while the plateau (knee) shows the presence of low-count background barcodes. If the plot lacks this clear structure, it may suggest poor sample quality or high background noise, which can complicate downstream analyses
 
-```{r barcodes-plot}
+```{r barcodes-plot, echo=TRUE}
 p <- ggplot(bc_data, aes(x = Rank, y = Total)) +
     geom_point(shape = 1, aes(colour = Kept)) +
     geom_line(aes(y = Fitted), colour = "red") +
@@ -188,7 +214,7 @@ This is typical of what we see for 10x experiment where there is a sharp drop of
 
 We will now look at identifying which droplets to select using the `EmptyDrops` method. This method tests whether the composition of a droplet is significantly different from the ambient RNA in the sample which is obtained by pooling the empty droplets. Droplets with very large counts are also automatically retained.
 
-```{r empty-drops}
+```{r empty-drops, echo=TRUE}
 set.seed(1)
 emp_iters <- 60000
 emp_drops <- emptyDrops(counts(raw), lower = empty_thresh, niters = emp_iters,
@@ -197,7 +223,7 @@ emp_drops <- emptyDrops(counts(raw), lower = empty_thresh, niters = emp_iters,
 
 `EmptyDrops` uses a permutation approach to calculate p-values, assessing the likelihood that a droplet's RNA content could arise from ambient RNA alone. Ensuring a sufficient number of iterations (permutations) is vital for accurate p-value estimation. If there are any droplets that have non-significant p-values but are limited by the number of permuations, the number should be increased.
 
-```{r empty-drops-iters}
+```{r empty-drops-iters, echo=TRUE}
 emp_fdr <- 0.01 #Sets the FDR threshold (e.g., 1%) for determining significance.
 is_cell <- emp_drops$FDR <= emp_fdr #Logical vector indicating whether each droplet's FDR is below the threshold, suggesting it contains a cell.
 is_cell[is.na(is_cell)] <- FALSE #Any NA values in is_cell are set to FALSE to avoid misclassification.
@@ -211,12 +237,11 @@ colData(raw)$EmpDropsFilt <- is_cell #Logical flag indicating whether the drople
 table(Limited = emp_drops$Limited, Significant = is_cell)
 ```
 
-Limited: Indicates whether the p-value calculation for a droplet was limited by the number of permutations (TRUE = limited, FALSE = not limited).
-Significant: Indicates whether a droplet was deemed significant (i.e., likely to contain a cell) based on the FDR threshold (TRUE = significant, FALSE = not significant).
+Limited: Indicates whether the p-value calculation for a droplet was limited by the number of permutations (TRUE = limited, FALSE = not limited). Significant: Indicates whether a droplet was deemed significant (i.e., likely to contain a cell) based on the FDR threshold (TRUE = significant, FALSE = not significant).
 
 Another way to check the `EmptyDrops` results is to look at the droplets below our empty threshold. We are assuming that these droplets only contain ambient RNA and therefore the null hypothesis should be true and the distribution of p-values should be approximately uniform.
 
-```{r empty-drops-pvals}
+```{r empty-drops-pvals, echo=TRUE}
 p <- colData(raw) %>%
     as.data.frame() %>%
     filter(BarcodeTotal <= empty_thresh,
@@ -235,7 +260,7 @@ Peaks near zero would tell us that not all of the droplets below the threshold a
 
 We can also plot the negative log-probability against the total counts to see which droplets `EmptyDrops` has selected.
 
-```{r empty-drops-plot}
+```{r empty-drops-plot, echo=TRUE}
 p <- colData(raw) %>%
     as.data.frame() %>%
     filter(!is.na(EmpDropsFilt)) %>%
@@ -257,7 +282,7 @@ There were `r sum(emp_drops$Total <= empty_thresh)` droplets with less than `r e
 
 Let's quickly compare differences between the selection methods using an UpSet plot:
 
-```{r compare-overlap}
+```{r compare-overlap, echo=TRUE}
 # Prepare data for UpSet plot
 plot_data <- colData(raw) %>%
     as.data.frame() %>%
@@ -276,7 +301,7 @@ upset(plot_data, order.by = "freq",
 
 # # Save plot as an image file
 # comp_plot <- grid.grab()  # Capture current plot
-
+# 
 # # Save the captured plot
 # ggsave(here::here("output", DOCNAME, paste0(tag, "_4_compare_methods.png")), comp_plot,
 #        width = 10, height = 5, scale = 1)
@@ -288,7 +313,7 @@ We can see that most of the cells are identified by both methods. Our use of the
 
 We are going to perform further quality control of these cells anyway so at this stage we will keep those that were selected either by Cell Ranger v3 or by `EmptyDrops`.
 
-```{r select}
+```{r select, echo=TRUE}
 selected <- raw[, colData(raw)$CellRangerFilt | colData(raw)$EmpDropsFilt]
 selected <- selected[Matrix::rowSums(counts(selected)) > 0, ]
 
@@ -303,7 +328,7 @@ colData(selected)$SelMethod[!colData(selected)$EmpDropsFilt] <- "CellRanger"
 
 This table describes parameters used and set in this document.
 
-```{r parameters}
+```{r parameters, echo=TRUE}
 params <- list(
     list(
         Parameter = "n_droplets",
@@ -343,24 +368,24 @@ params <- list(
 )
 
 params <- jsonlite::toJSON(params, pretty = TRUE)
-json_table <- jsonlite::fromJSON(params)
+knitr::kable(jsonlite::fromJSON(params))
 
-knitr::kable(json_table, format = "html") %>%
-  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
-  column_spec(1, width = "2cm") %>% 
-  column_spec(2, width = "3cm") %>%    
-  column_spec(3, width = "15cm") 
+# json_table <- jsonlite::fromJSON(params)
+# 
+# knitr::kable(json_table, format = "html") %>%
+#   kable_styling(bootstrap_options = "striped", full_width = FALSE, position = "left") %>%
+#   scroll_box(width = "100%", height = "400px")
 ```
 
 ## Output files
 
 This table describes the output files produced by this document. Right click and *Save Link As...* to download the results (to be implemented).
 
-```{r save}
-save(selected, file=here::here("output/processed/01_selected.Robj"))
+```{r save, eval=FALSE, echo=TRUE}
+save(selected, file=here::here("output/processed/01_SI_selected.Robj"))
 ```
 
-```{r output}
+```{r output, echo=TRUE}
 readr::write_lines(params, here::here("output", DOCNAME, "parameters.json"))
 
 # Assuming all calls return single strings
@@ -370,7 +395,7 @@ file_links <- c(
     getDownloadLink("01_SI_2_empty_droplets_distribution.png", DOCNAME),
     getDownloadLink("01_SI_3_barcodes_negative_prob.png", DOCNAME),
     getDownloadLink("01_SI_4_compare_methods.png", DOCNAME),
-    getDownloadLink("01_selected.Robj", DOCNAME)
+    getDownloadLink("01_SI_selected.Robj", DOCNAME)
 )
 
 # Create data frame
@@ -393,6 +418,7 @@ knitr::kable(results_df)
 
 ## Session information
 
-```{r session-info, cache = FALSE}
+```{r session-info, cache = FALSE, echo=TRUE}
 devtools::session_info()
 ```
+

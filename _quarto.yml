@@ -11,8 +11,8 @@ website:
         menu:
           - text: "Empty droplets"
             href: analysis/01_empty_droplets.html
-  #       - text: "Quality control"
-  #         href: 02_quality_control.html
+          - text: "Quality control"
+            href: analysis/02_quality_control.html
   #       - text: "Clustering"
   #         href: 03-clustering.html
   #       - text: "Marker genes"
@@ -37,6 +37,7 @@ format:
     theme: Default
     css: styles.css
     toc: true
+    code-fold: true
 editor: visual
 execute:
   freeze: auto
