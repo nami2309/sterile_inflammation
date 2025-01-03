@@ -119,6 +119,41 @@
     "text": "Output files\nThis table describes the output files produced by this document. Right click and Save Link As… to download the results (to be implemented).\n\n\nCode\nsaved_files &lt;- extract_saved_files(\"./analysis/02_quality_control.qmd\")\n#saved_files &lt;- saved_files[-c(1, 2), ]\nprint(saved_files)\nwrite.csv(saved_files, file = paste0(proj_dir, \"/output/data/02_SI_saved_files_summary.csv\"))\n\n\n\n\nCode\nsaved_files &lt;- read.csv(file = paste0(proj_dir, \"/output/data/02_SI_saved_files_summary.csv\"))\nparams &lt;- jsonlite::toJSON(saved_files, pretty = TRUE)\nknitr::kable(jsonlite::fromJSON(params))\n\n\n\n\n\n\n\n\n\n\n\nX\nFile\nDirectory\nDescription\n\n\n\n\n1\nselected\nfile=here::here(output/processed/02_SI_selected.Robj)\nSCE obj, add lib size, normalize\n\n\n2\nsobj\nfile=/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj.Robj\ninitial SO, unfiltered\n\n\n3\nsobj\nfile=/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_scale.Robj\ninitial SO; unfiltered, scaled\n\n\n4\nfiltered_sobj\nfile=./output/processed/02_SI_sobj_qc.Robj\nSO post filtering #1\n\n\n5\nfiltered_sobj\nfile=/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_df.Robj\nSO post doublet finder\n\n\n6\nsobj_post_df\nfile=./output/processed/02_SI_sobj_post_df.Robj\nSO post filtering #2\n\n\n7\nvp\nfile = ./output/processed/02_SI_variancePartition.Robj\nvariance partition on qc metrics\n\n\n8\nsobj\nfile=/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_scale_pass_qc.Robj\nintial SO, add metadata whether cells passed qc"
   },
   {
+    "objectID": "analysis/03_clustering.html",
+    "href": "analysis/03_clustering.html",
+    "title": "Clustering",
+    "section": "",
+    "text": "In this document we are going to perform clustering on the high-quality filtered Seurat object."
+  },
+  {
+    "objectID": "analysis/03_clustering.html#comparison",
+    "href": "analysis/03_clustering.html#comparison",
+    "title": "Clustering",
+    "section": "Comparison",
+    "text": "Comparison\nNow let’s examine the overalp between the 2 methods, and perform principal component analysis on both sets of genes.\n\nNumberPCA (Seurat: SCTransform)PCA (Seurat:VST)\n\n\n\n\n\n\n\n\n\n\n\n\n\nPCA of cells using genes selected by SCTransform.\n\n\nCode\nseurat_sct &lt;- RunPCA(seurat_sct, features = vars_sct, npcs = 2,\n                 seed.use = 123, reduction.key = \"PCSCT_\")\n\n\n\n\n\n\n\n\n\n\n\n\n\nPCA of cells using genes selected by Seurat’s VST.\n\n\nCode\nseurat &lt;- RunPCA(seurat, features = vars_vst, npcs = 2,\n                 seed.use = 123, reduction.key = \"PCVST_\")"
+  },
+  {
+    "objectID": "analysis/03_clustering.html#seurat-sctransform-1",
+    "href": "analysis/03_clustering.html#seurat-sctransform-1",
+    "title": "Clustering",
+    "section": "Seurat: SCTransform",
+    "text": "Seurat: SCTransform\n\nElbow and screeDim loadings 1:15Dim loadings 15:30Heatmap 1:15Heatmap 15:30Quantitative approach\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNULL\n\n\n\n\n\n\n\n\n\n\n\n\n\nNULL\n\n\n\n\n\n\n[1] \"Approach 1: Dims = 41\"\n[1] \"Approach 2: Dims = 13\"\n[1] \"Approach 3: Dims = 39\"\n\nSummary of Approaches:\nApproach 1: The point where PCs collectively contribute ~90% of the standard deviation and the individual PCs only contribute 5% of standard deviation.\nApproach 2: The point where the percent change in variation between consecutive PCs is &lt; 0.1%.\nApproach 3: The point where the cumulative variance explained by the PCs is at least 95%."
+  },
+  {
+    "objectID": "analysis/03_clustering.html#seurat-vst",
+    "href": "analysis/03_clustering.html#seurat-vst",
+    "title": "Clustering",
+    "section": "Seurat: VST",
+    "text": "Seurat: VST\n\nElbow and screeDim loadings 1:15Dim loadings 15:30Heatmap 1:15Heatmap 1:30Quantitative approach\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNULL\n\n\n\n\n\n\n\n\n\n\n\n\n\nNULL\n\n\n\n\n\n\n[1] \"Approach 1: Dims = 41\"\n[1] \"Approach 2: Dims = 18\"\n[1] \"Approach 3: Dims = 39\"\n\nSummary of Approaches:\nApproach 1: The point where PCs collectively contribute ~90% of the standard deviation and the individual PCs only contribute 5% of standard deviation.\nApproach 2: The point where the percent change in variation between consecutive PCs is &lt; 0.1%.\nApproach 3: The point where the cumulative variance explained by the PCs is at least 95%."
+  },
+  {
+    "objectID": "analysis/03_clustering.html#selection",
+    "href": "analysis/03_clustering.html#selection",
+    "title": "Clustering",
+    "section": "Selection",
+    "text": "Selection\nI would like to use the quantitative approach 2 for both methods and see what clustering looks like, since there are no clear indications at this stage which method is best.\n\n\nCode\nn_pcs_sct &lt;- 13\nn_pcs_vst &lt;- 18\n\n\nBased on these plots we will use the first 13 principal components for SCTransform and the first 18 principal components for Seurat VST."
+  },
+  {
     "objectID": "analysis/01_empty_droplets.html",
     "href": "analysis/01_empty_droplets.html",
     "title": "Empty droplets",
