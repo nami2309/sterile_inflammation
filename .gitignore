@@ -30,9 +30,6 @@ docs/analysis/cache*
 docs/analysis/site_libs
 docs/site_libs
 docs/search.json
-docs/01_empty_droplets_files
-docs/02_quality_control_files
-docs/03_clustering_files
 
 # Data
 data/
