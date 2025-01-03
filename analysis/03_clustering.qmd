@@ -110,7 +110,6 @@ In this document we are going to perform clustering on the high-quality filtered
 Before we begin clustering we need to select a set of genes to perform analysis on. This should capture most of the variability in the dataset and differences between cell types. We will do this using a couple of different methods.
 
 ::: panel-tabset
-
 ## Seurat: SCTransform
 
 Seurat's default method identifies genes that are outliers on a plot between mean expression and variability of a gene based on cutoff thresholds.
@@ -195,7 +194,6 @@ datatable(
   rownames = TRUE
 )
 ```
-
 :::
 
 ## Comparison
@@ -203,7 +201,6 @@ datatable(
 Now let's examine the overalp between the 2 methods, and perform principal component analysis on both sets of genes.
 
 ::: panel-tabset
-
 ### Number
 
 ```{r overlap}
@@ -275,7 +272,6 @@ seurat_sct <- RunPCA(
 ```
 
 ::: panel-tabset
-
 ### Elbow and scree
 
 ```{r dims_sct_elbow_plot, cache=FALSE}
@@ -348,7 +344,6 @@ ggsave(paste0(plots_dir,tag,"_dims_sct_heatmap_2.png"),
 ```{r quant_sct, cache=FALSE}
 selected_dims <- select_dims(seurat_sct, "pca")
 ```
-
 :::
 
 ## Seurat: VST
@@ -364,7 +359,6 @@ seurat <- RunPCA(
 ```
 
 ::: panel-tabset
-
 ### Elbow and scree
 
 ```{r dims_vst_elbow_plot, cache=FALSE, eval=TRUE}
@@ -437,19 +431,18 @@ ggsave(paste0(plots_dir,tag,"_dims_vst_heatmap_2.png"),
 ```{r quant_vst, cache=FALSE}
 selected_dims <- select_dims(seurat, "pca")
 ```
-
 :::
 
 ## Selection
 
-I would like to use the quantitative approach 2 for both methods and see what clustering looks like, since there are no clear indications at this stage which method is best. 
+I would like to use the quantitative approach 2 for both methods and see what clustering looks like, since there are no clear indications at this stage which method is best.
 
 ```{r pca-selection, cache=FALSE, echo=TRUE}
 n_pcs_sct <- 13
 n_pcs_vst <- 18
 ```
 
-Based on these plots we will use the first `r n_pcs_sct` principal components for SCTransform and the first `r n_pcs_vst` principal components for Seurat VST. 
+Based on these plots we will use the first `r n_pcs_sct` principal components for SCTransform and the first `r n_pcs_vst` principal components for Seurat VST.
 
 # Resolution
 
@@ -472,11 +465,9 @@ save(seurat, file=paste0(sobj_dir,tag,"_seurat_vst.Robj"))
 ```
 
 ::: panel-tabset
-
 ## Seurat: SCTransform
 
 ::: panel-tabset
-
 ### sample
 
 ```{r sct_sample_res, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
@@ -516,13 +507,11 @@ out <- knit_child(text = unlist(src_list), options = list(cache=FALSE))
 ```
 
 `r out`
-
 :::
 
-## Seurat: VST 
+## Seurat: VST
 
 ::: panel-tabset
-
 ### sample
 
 ```{r vst_sample_res, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
@@ -562,21 +551,17 @@ out <- knit_child(text = unlist(src_list), options = list(cache=FALSE))
 ```
 
 `r out`
-
+:::
 :::
 
-:::
-
-# Clustering trees 
+# Clustering trees
 
 Clustering trees show the relationship between clusters at adjacent resolutions. Each cluster is represented as a node in a graph and the edges show the overlap between clusters.
 
 ::: panel-tabset
-
 ## Seurat:SCTransform
 
 ::: panel-tabset
-
 ### Standard
 
 Coloured by clustering resolution.
@@ -593,7 +578,7 @@ Coloured by the SC3 stability metric.
 clustree(seurat_sct, node_colour = "sc3_stability")
 ```
 
-### Genes 
+### Genes
 
 Coloured by the expression of known marker genes.
 
@@ -613,7 +598,6 @@ is_present <- known_genes %in% rownames(seurat_sct)
 ```
 
 ::: panel-tabset
-
 ```{r sct_clustree_genes, results = "hide"}
 src_list <- lapply(known_genes[is_present], function(gene) {
   rand_suffix <- paste0(sample(letters, 3, replace=TRUE), collapse="")
@@ -634,15 +618,12 @@ out <- knit_child(text = unlist(src_list), options = list(cache = FALSE))
 ```
 
 `r out`
-
 :::
-
 :::
 
 ## Seurat:VST
 
 ::: panel-tabset
-
 ### Standard
 
 Coloured by clustering resolution.
@@ -659,7 +640,7 @@ Coloured by the SC3 stability metric.
 clustree(seurat, node_colour = "sc3_stability")
 ```
 
-### Genes 
+### Genes
 
 Coloured by the expression of known marker genes.
 
@@ -679,7 +660,6 @@ is_present <- known_genes %in% rownames(seurat)
 ```
 
 ::: panel-tabset
-
 ```{r vst_clustree_genes, results = "hide"}
 src_list <- lapply(known_genes[is_present], function(gene) {
   rand_suffix <- paste0(sample(letters, 3, replace=TRUE), collapse="")
@@ -700,10 +680,6 @@ out <- knit_child(text = unlist(src_list), options = list(cache = FALSE))
 ```
 
 `r out`
-
 :::
-
 :::
-
 :::
-
