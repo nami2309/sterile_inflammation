@@ -1,14 +1,16 @@
 ---
 title: "Clustering"
-format:
-  html:
-    embed-resources: true
-    self-contained: true
 editor_options: 
   chunk_output_type: console
 ---
 
 ```{r knitr, include = FALSE}
+#remember to add the following chunk to the YML header when rendering this file if you want to send it to someone, so that the plots are embedded in the file.
+# format:
+#   html:
+#     embed-resources: true
+#     self-contained: true
+    
 DOCNAME = "03_clustering"
 NOW <- Sys.time()
 script_number <- "03_"
