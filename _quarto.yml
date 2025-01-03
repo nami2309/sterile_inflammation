@@ -13,8 +13,8 @@ website:
             href: analysis/01_empty_droplets.html
           - text: "Quality control"
             href: analysis/02_quality_control.html
-  #       - text: "Clustering"
-  #         href: 03-clustering.html
+          - text: "Clustering"
+            href: analysis/03_clustering.html
   #       - text: "Marker genes"
   #         href: 04-marker-genes.html
   #       - text: "PAGA"
@@ -38,6 +38,7 @@ format:
     css: styles.css
     toc: true
     code-fold: true
+    smooth-scroll: true
 editor: visual
 execute:
   freeze: auto

@@ -1,0 +1,707 @@
+---
+title: "Clustering"
+format:
+  html:
+    embed-resources: true
+    self-contained: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = "03_clustering"
+NOW <- Sys.time()
+script_number <- "03_"
+project <- "SI"
+tag <- paste0(script_number,project)
+
+# Time chunks during knitting
+knitr::knit_hooks$set(timeit = function(before) {
+    if (before) {
+        print(paste("Start:", Sys.time()))
+        NOW <<- Sys.time()
+    } else {
+        print(paste("Stop:", Sys.time()))
+        print(Sys.time() - NOW)
+    }
+})
+
+knitr::opts_chunk$set(
+    autodep        = TRUE,
+    cache          = TRUE,
+    cache.path     = paste0("cache/", DOCNAME, "/"),
+    cache.comments = FALSE,
+    echo           = TRUE,
+    error          = FALSE,
+    fig.align      = "center",
+    fig.width      = 10,
+    fig.asp        = 0.8,
+    out.width      = "90%",
+    message        = FALSE,
+    warning        = FALSE,
+    timeit         = TRUE
+)
+knitr::opts_chunk$set(c("png", "jpg", "tiff", "ps"),
+                      dpi = 600,
+                      echo = FALSE)
+knitr::opts_chunk$set(fig.retina = 1)
+```
+
+```{r libaries, cache = FALSE}
+# scRNA-seq
+library("SingleCellExperiment")
+library("scater")
+library(scran)
+library("Seurat")
+library("singleCellTK")
+library("LoomExperiment")
+
+# Clustering trees
+library("clustree")
+
+# Plotting
+library("viridis")
+library("ggforce")
+library("cowplot")
+library(ggrepel)
+
+# Presentation
+library("knitr")
+
+# Tidyverse
+library("tidyverse")
+```
+
+```{r source, cache = FALSE}
+proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
+plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/03_clustering/"
+sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
+
+source(paste0(proj_dir,"/functions/output.R"))
+source(paste0(proj_dir,"/functions/crossover.R"))
+source(paste0(proj_dir,"/functions/universal.R"))
+
+load(paste0(sobj_dir,tag,"_seurat_sct.Robj"))
+load(paste0(sobj_dir,tag,"_seurat_vst.Robj"))
+```
+
+```{r setup, message=FALSE, warning=FALSE, cache=FALSE, include=TRUE}
+# Define sample names
+sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
+
+sample_colors <- c(
+  "PVM_0h"  = "#EE9A49",  
+  "PVM_4h"  = "#CD853F", 
+  "PVM_7h" = "#8B5A2B",  
+  "PVEU_0h"  = "#7EC0EE",
+  "PVEU_4h" = "#6CA6CD", 
+  "PVEU_7h" = "#4A708B"
+)
+```
+
+# Introduction
+
+In this document we are going to perform clustering on the high-quality filtered Seurat object.
+
+# Gene selection
+
+Before we begin clustering we need to select a set of genes to perform analysis on. This should capture most of the variability in the dataset and differences between cell types. We will do this using a couple of different methods.
+
+::: panel-tabset
+
+## Seurat: SCTransform
+
+Seurat's default method identifies genes that are outliers on a plot between mean expression and variability of a gene based on cutoff thresholds.
+
+We will use SCTranform as it uses a regularized negative binomial regression model to normalize data and identify HVGs, and automatically accounts for sequencing depth and technical noise.
+
+```{r create_seurat_sct_obj, cache=FALSE, eval=FALSE, echo=TRUE}
+# Done on thomas mohrs server
+# Create new seurat obj as sctransform needs to be run on raw counts
+raw_counts <- GetAssayData(object = seurat, assay = "RNA", slot = "counts")
+seurat_new <- CreateSeuratObject(counts = raw_counts)
+original_metadata <- seurat[[]]
+seurat_new <- AddMetaData(object = seurat_new, metadata = original_metadata)
+seurat_new <- SCTransform(seurat_new, vst.flavor = "v2", verbose = FALSE)
+```
+
+```{r seurat_sct_plot, cache=FALSE}
+# Retrieve variable features
+vars_sct <- VariableFeatures(seurat_sct)
+top50_sct <- head(vars_sct, 50)
+p_sct <- VariableFeaturePlot(seurat_sct) +
+  labs(title = "Seurat with SCTransform (Top 50 labeled)") +
+  theme_minimal()
+p_sct <- LabelPoints(plot = p_sct, points = top50_sct, 
+                             repel = TRUE, xnudge = 0, ynudge = 0,
+                             max.overlaps = Inf)
+p_sct
+ggsave(paste0(plots_dir,tag,"_SCT_top50_genes.png"),
+       plot = p_sct, width = 6, height = 5)
+```
+
+## Seurat: SCTransform HVGs list
+
+```{r seurat_sct_list, cache=FALSE}
+library(DT)
+hvg_info <- HVFInfo(seurat_sct)
+hvg_details <- hvg_info[vars_sct, ]
+
+datatable(
+  hvg_details,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE,
+)
+```
+
+## Seurat: FindVariableFeatures
+
+The "vst" method for FindVariableFeatures stands for Variance Stabilizing Transformation.
+
+```{r seurat_vst, echo=TRUE, eval=FALSE, cache=FALSE}
+seurat <- sobj_post_df
+rm(sobj_post_df)
+# Find variable features using "vst"
+seurat <- FindVariableFeatures(seurat, selection.method = "vst", nfeatures = 3000)
+```
+
+```{r seurat_vst_plot, cache=FALSE}
+vars_vst <- VariableFeatures(seurat)
+top50_vst <- head(vars_vst, 50)
+p_seu <- VariableFeaturePlot(seurat) +
+  labs(title = "Seurat with FindVariableFeatures(vst)") +
+  theme_minimal()
+p_seu <- LabelPoints(plot = p_seu, points = top50_vst, 
+                             repel = TRUE, xnudge = 0, ynudge = 0,
+                             max.overlaps = Inf)
+p_seu
+ggsave(paste0(plots_dir,tag,"_VST_top50_genes.png"),
+       plot = p_seu, width = 6, height = 5)
+```
+
+## Seurat: VST HVGs list
+
+```{r seurat_vst_list, cache=FALSE}
+library(DT)
+
+hvg_info <- HVFInfo(seurat)
+hvg_details <- hvg_info[vars_vst, ]
+
+datatable(
+  hvg_details,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE
+)
+```
+
+:::
+
+## Comparison
+
+Now let's examine the overalp between the 2 methods, and perform principal component analysis on both sets of genes.
+
+::: panel-tabset
+
+### Number
+
+```{r overlap}
+library(UpSetR)
+venn_list <- list(
+  Find_var_features_HVGs = vars_vst,
+  scTransform_HVGs = vars_sct
+)
+p <- upset(fromList(venn_list),
+      order.by = "freq",
+      main.bar.color = "steelblue",
+      sets.bar.color = "tomato")
+p
+# ggsave(paste0(plots_dir,tag,"_SCT_VST_overlap.png"),
+#        plot = p, width = 6, height = 5)
+```
+
+### PCA (Seurat: SCTransform)
+
+PCA of cells using genes selected by SCTransform.
+
+```{r genes_pca_sct, eval=FALSE, echo=TRUE}
+seurat_sct <- RunPCA(seurat_sct, features = vars_sct, npcs = 2,
+                 seed.use = 123, reduction.key = "PCSCT_")
+```
+
+```{r pca_sct_plot, cache=FALSE}
+Idents(seurat_sct) <- "orig.ident"
+p <- DimPlot(seurat_sct, reduction = "pca", dims = c(1,2),
+        label = FALSE, cols = sample_colors)
+p
+ggsave(paste0(plots_dir,tag,"_SCT_PCA.png"),
+       plot = p, width = 6, height = 5)
+```
+
+### PCA (Seurat:VST)
+
+PCA of cells using genes selected by Seurat's VST.
+
+```{r genes_pca_vst, eval=FALSE, echo=TRUE, cache=FALSE}
+seurat <- RunPCA(seurat, features = vars_vst, npcs = 2,
+                 seed.use = 123, reduction.key = "PCVST_")
+```
+
+```{r pca_vst_plot, cache=FALSE}
+Idents(seurat) <- "orig.ident"
+p <- DimPlot(seurat, reduction = "pca", dims = c(1,2), 
+        label = FALSE, cols = sample_colors) 
+p
+ggsave(paste0(plots_dir,tag,"_VST_PCA.png"),
+       plot = p, width = 6, height = 5)
+```
+:::
+
+# Dimensionality reduction
+
+The next step in the Seurat workflow is to select a set of principal components that capture the variance in the dataset using the selected genes. We will use both the genesets above and compare how the gene loadings look.
+
+## Seurat: SCTransform
+
+```{r dims_sct_elbow, eval=FALSE, cache=FALSE}
+seurat_sct <- RunPCA(
+  object        = seurat_sct,
+  features      = vars_sct,
+  npcs          = 50,
+  seed.use      = 123,
+  reduction.key = "PCSCT_"
+)
+```
+
+::: panel-tabset
+
+### Elbow and scree
+
+```{r dims_sct_elbow_plot, cache=FALSE}
+p1 <- ElbowPlot(seurat_sct, ndims = 50) 
+
+# Compute the proportion of the total variance each PC explains
+stdevs <- seurat_sct[["pca"]]@stdev
+var_per_pc <- stdevs^2
+var_explained <- var_per_pc / sum(var_per_pc)
+var_explained_percent <- var_explained * 100
+df <- data.frame(
+  PC = 1:50,
+  VarianceExplained = var_explained_percent
+)
+
+p2 <- ggplot(df, aes(x = PC, y = VarianceExplained)) +
+  geom_line(group = 1) +         
+  geom_point() +                 
+  theme_minimal() +
+  labs(
+    title = "",
+    x = "Principal component",
+    y = "% Variance explained"
+  )
+
+p <- p1 + p2
+p
+ggsave(paste0(plots_dir,tag,"_dims_sct_elbow.png"),
+       plot = p, width = 6, height = 5)
+```
+
+### Dim loadings 1:15
+
+```{r dims_sct_dim_1, cache=FALSE}
+p <- VizDimLoadings(seurat_sct, dims = 1:15, nfeatures = 10)
+p
+ggsave(paste0(plots_dir,tag,"_dims_sct_dim_1.png"),
+       plot = p, width = 6, height = 5)
+```
+
+### Dim loadings 15:30
+
+```{r dims_sct_dim_2, cache=FALSE}
+p <- VizDimLoadings(seurat_sct, dims = 15:30, nfeatures = 10)
+p
+ggsave(paste0(plots_dir,tag,"_dims_sct_dim_2.png"),
+       plot = p, width = 6, height = 5)
+```
+
+### Heatmap 1:15
+
+```{r dims_sct_heatmap_1, cache=FALSE}
+p <- DimHeatmap(seurat_sct, dims = 1:15, cells = 500, balanced = TRUE)
+p
+ggsave(paste0(plots_dir,tag,"_dims_sct_heatmap_1.png"),
+       plot = p, width = 6, height = 5)
+```
+
+### Heatmap 15:30
+
+```{r dims_sct_heatmap_2, cache=FALSE}
+p <- DimHeatmap(seurat_sct, dims = 15:30, cells = 500, balanced = TRUE)
+p
+ggsave(paste0(plots_dir,tag,"_dims_sct_heatmap_2.png"),
+       plot = p, width = 6, height = 5)
+```
+
+### Quantitative approach
+
+```{r quant_sct, cache=FALSE}
+selected_dims <- select_dims(seurat_sct, "pca")
+```
+
+:::
+
+## Seurat: VST
+
+```{r dims_vst_elbow, cache=FALSE, eval=FALSE}
+seurat <- RunPCA(
+  object        = seurat,
+  features      = vars_vst,
+  npcs          = 50,
+  seed.use      = 123,
+  reduction.key = "PCVST_"
+)
+```
+
+::: panel-tabset
+
+### Elbow and scree
+
+```{r dims_vst_elbow_plot, cache=FALSE, eval=TRUE}
+p1 <- ElbowPlot(seurat, ndims = 50)
+
+# Compute the proportion of the total variance each PC explains
+stdevs <- seurat[["pca"]]@stdev
+var_per_pc <- stdevs^2
+var_explained <- var_per_pc / sum(var_per_pc)
+var_explained_percent <- var_explained * 100
+df <- data.frame(
+  PC = 1:50,
+  VarianceExplained = var_explained_percent
+)
+
+p2 <- ggplot(df, aes(x = PC, y = VarianceExplained)) +
+  geom_line(group = 1) +         
+  geom_point() +                 
+  theme_minimal() +
+  labs(
+    title = "",
+    x = "Principal component",
+    y = "% Variance explained"
+  )
+
+p <- p1 + p2
+p
+ggsave(paste0(plots_dir,tag,"_dims_vst_elbow.png"),
+       plot = p, width = 6, height = 5)
+```
+
+### Dim loadings 1:15
+
+```{r dims_vst_dim_1, cache=FALSE}
+p2 <- VizDimLoadings(seurat, dims = 1:15, nfeatures = 10)
+p2
+ggsave(paste0(plots_dir,tag,"_dims_vst_dim_1.png"),
+       plot = p2, width = 6, height = 5)
+```
+
+### Dim loadings 15:30
+
+```{r dims_vst_dim_2, cache=FALSE}
+p3 <- VizDimLoadings(seurat, dims = 16:30, nfeatures = 10)
+p3
+ggsave(paste0(plots_dir,tag,"_dims_vst_dim_2.png"),
+       plot = p3, width = 6, height = 5)
+```
+
+### Heatmap 1:15
+
+```{r dims_vst_heatmap_1, cache=FALSE}
+p4 <- DimHeatmap(seurat, dims = 1:15, cells = 500, balanced = TRUE)
+p4
+ggsave(paste0(plots_dir,tag,"_dims_vst_heatmap_1.png"),
+       plot = p4, width = 6, height = 5)
+```
+
+### Heatmap 1:30
+
+```{r dims_vst_heatmap_2, cache=FALSE}
+p4 <- DimHeatmap(seurat, dims = 1:30, cells = 500, balanced = TRUE)
+p4
+ggsave(paste0(plots_dir,tag,"_dims_vst_heatmap_2.png"),
+       plot = p4, width = 6, height = 5)
+```
+
+### Quantitative approach
+
+```{r quant_vst, cache=FALSE}
+selected_dims <- select_dims(seurat, "pca")
+```
+
+:::
+
+## Selection
+
+I would like to use the quantitative approach 2 for both methods and see what clustering looks like, since there are no clear indications at this stage which method is best. 
+
+```{r pca-selection, cache=FALSE, echo=TRUE}
+n_pcs_sct <- 13
+n_pcs_vst <- 18
+```
+
+Based on these plots we will use the first `r n_pcs_sct` principal components for SCTransform and the first `r n_pcs_vst` principal components for Seurat VST. 
+
+# Resolution
+
+Now that we have a set of principal components we can perform clustering. Seurat uses a graph-based clustering method which has a resolution parameter that controls the number of clusters that are produced. We are going to cluster at a range of resolutions and select one that gives a reasonable division of this dataset.
+
+```{r cluster, eval=FALSE, echo=TRUE, cache=TRUE}
+resolutions <- seq(0, 1, 0.1)
+
+seurat_sct <- RunUMAP(seurat_sct, dims = 1:n_pcs_sct)
+seurat_sct <- FindNeighbors(seurat_sct, dims = 1:n_pcs_sct)
+seurat_sct <- FindClusters(seurat_sct, resolution = resolutions)
+seurat_sct@meta.data <- seurat_sct@meta.data %>% select(-RNA_snn_res.0.8)
+
+seurat <- RunUMAP(seurat, dims = 1:n_pcs_vst)
+seurat <- FindNeighbors(seurat, dims = 1:n_pcs_vst)
+seurat <- FindClusters(seurat, resolution = resolutions)
+
+save(seurat_sct, file=paste0(sobj_dir,tag,"_seurat_sct.Robj"))
+save(seurat, file=paste0(sobj_dir,tag,"_seurat_vst.Robj"))
+```
+
+::: panel-tabset
+
+## Seurat: SCTransform
+
+::: panel-tabset
+
+### sample
+
+```{r sct_sample_res, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+# A static chunk that shows the sample-level UMAP
+DimPlot(seurat_sct, group.by = "orig.ident", cols = sample_colors) +
+  ggtitle("") +
+  theme_minimal()
+
+# We dynamically generate one tab for each resolution
+resolutions <- seq(0, 0.9, 0.1)
+
+src_list <- lapply(seq_along(resolutions), function(idx) {
+  # Format the resolution to one decimal
+  res <- sprintf("%.1f", resolutions[idx])
+
+  # Generate a unique suffix for chunk labels
+  rand_suffix <- paste0(sample(letters, 3, replace=TRUE), collapse="")
+
+  # Each resolution becomes a top-level heading (###), which Quarto interprets as a new tab
+  c(
+    # Tab heading
+    paste0("### res ", res),
+
+    # Code chunk under this heading
+    paste0("```{r sct-res-", idx, "-", gsub('\\.', '-', res), "-", rand_suffix, 
+           ", fig.height=5, fig.width=5, echo=FALSE}"),
+    paste0("Idents(seurat_sct) <- 'SCT_snn_res.", res, "'"),
+    "DimPlot(seurat_sct, reduction='umap', label=TRUE, label.size=5) +",
+    paste0("  ggtitle('SCTransform res ", res, "') + theme_minimal() + NoLegend()"),
+    "```",
+    ""
+  )
+})
+
+# Insert the generated headings + chunks into the document
+out <- knit_child(text = unlist(src_list), options = list(cache=FALSE))
+```
+
+`r out`
+
+:::
+
+## Seurat: VST 
+
+::: panel-tabset
+
+### sample
+
+```{r vst_sample_res, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+# A static chunk that shows the sample-level UMAP
+DimPlot(seurat, group.by = "orig.ident", cols = sample_colors) +
+  ggtitle("") +
+  theme_minimal()
+
+# We dynamically generate one tab for each resolution
+resolutions <- seq(0, 0.9, 0.1)
+
+src_list <- lapply(seq_along(resolutions), function(idx) {
+  # Format the resolution to one decimal
+  res <- sprintf("%.1f", resolutions[idx])
+
+  # Generate a unique suffix for chunk labels
+  rand_suffix <- paste0(sample(letters, 3, replace=TRUE), collapse="")
+
+  # Each resolution becomes a top-level heading (###), which Quarto interprets as a new tab
+  c(
+    # Tab heading
+    paste0("### res ", res),
+
+    # Code chunk under this heading
+    paste0("```{r vst-res-", idx, "-", gsub('\\.', '-', res), "-", rand_suffix, 
+           ", fig.height=5, fig.width=5, echo=FALSE}"),
+    paste0("Idents(seurat) <- 'RNA_snn_res.", res, "'"),
+    "DimPlot(seurat, reduction='umap', label=TRUE, label.size=5) +",
+    paste0("  ggtitle('VST res ", res, "') + theme_minimal() + NoLegend()"),
+    "```",
+    ""
+  )
+})
+
+# Insert the generated headings + chunks into the document
+out <- knit_child(text = unlist(src_list), options = list(cache=FALSE))
+```
+
+`r out`
+
+:::
+
+:::
+
+# Clustering trees 
+
+Clustering trees show the relationship between clusters at adjacent resolutions. Each cluster is represented as a node in a graph and the edges show the overlap between clusters.
+
+::: panel-tabset
+
+## Seurat:SCTransform
+
+::: panel-tabset
+
+### Standard
+
+Coloured by clustering resolution.
+
+```{r sct_clustree}
+clustree(seurat_sct)
+```
+
+### Stability
+
+Coloured by the SC3 stability metric.
+
+```{r sct_clustree_stability}
+clustree(seurat_sct, node_colour = "sc3_stability")
+```
+
+### Genes 
+
+Coloured by the expression of known marker genes.
+
+```{r known-genes}
+known_genes <- c(
+  "Ccr2", "Irf5", "S100a4", "Adgre1", 
+  "Csf1r", "Folr2", 
+  "Mmp9", "Lcn2", "Retnlg", "S100a8", 
+  "Pecam1", 
+  "Cldn5", "Emcn", "Sox17", 
+  "Kit", "Cpa3", "Tpsb2",
+  "Des", "Acta2", "Pdgfrb", 
+  "Cd19", "Blk", "Cd22"
+)
+
+is_present <- known_genes %in% rownames(seurat_sct)
+```
+
+::: panel-tabset
+
+```{r sct_clustree_genes, results = "hide"}
+src_list <- lapply(known_genes[is_present], function(gene) {
+  rand_suffix <- paste0(sample(letters, 3, replace=TRUE), collapse="")
+  
+  src <- c(
+    "#### {{gene}} {.unnumbered}",
+    paste0("```{r clustree-{{gene}}-", rand_suffix, "}"),
+    "clustree(seurat_sct, node_colour = '{{gene}}', node_colour_aggr = 'mean') +",
+    "scale_colour_viridis_c(option = 'plasma', begin = 0.3)",
+    "```",
+    ""
+  )
+  # Pass the 'gene' variable to be expanded
+  knit_expand(text = src, gene = gene)
+})
+
+out <- knit_child(text = unlist(src_list), options = list(cache = FALSE))
+```
+
+`r out`
+
+:::
+
+:::
+
+## Seurat:VST
+
+::: panel-tabset
+
+### Standard
+
+Coloured by clustering resolution.
+
+```{r vst_clustree}
+clustree(seurat)
+```
+
+### Stability
+
+Coloured by the SC3 stability metric.
+
+```{r vst_clustree_stability}
+clustree(seurat, node_colour = "sc3_stability")
+```
+
+### Genes 
+
+Coloured by the expression of known marker genes.
+
+```{r vst_known_genes}
+known_genes <- c(
+  "Ccr2", "Irf5", "S100a4", "Adgre1", 
+  "Csf1r", "Folr2", 
+  "Mmp9", "Lcn2", "Retnlg", "S100a8", 
+  "Pecam1", 
+  "Cldn5", "Emcn", "Sox17", 
+  "Kit", "Cpa3", "Tpsb2",
+  "Des", "Acta2", "Pdgfrb", 
+  "Cd19", "Blk", "Cd22"
+)
+
+is_present <- known_genes %in% rownames(seurat)
+```
+
+::: panel-tabset
+
+```{r vst_clustree_genes, results = "hide"}
+src_list <- lapply(known_genes[is_present], function(gene) {
+  rand_suffix <- paste0(sample(letters, 3, replace=TRUE), collapse="")
+  
+  src <- c(
+    "#### {{gene}} {.unnumbered}",
+    paste0("```{r clustree-{{gene}}-", rand_suffix, "}"),
+    "clustree(seurat, node_colour = '{{gene}}', node_colour_aggr = 'mean') +",
+    "scale_colour_viridis_c(option = 'plasma', begin = 0.3)",
+    "```",
+    ""
+  )
+  # Pass the 'gene' variable to be expanded
+  knit_expand(text = src, gene = gene)
+})
+
+out <- knit_child(text = unlist(src_list), options = list(cache = FALSE))
+```
+
+`r out`
+
+:::
+
+:::
+
+:::
+

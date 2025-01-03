@@ -421,4 +421,3 @@ knitr::kable(results_df)
 ```{r session-info, cache = FALSE, echo=TRUE}
 devtools::session_info()
 ```
-

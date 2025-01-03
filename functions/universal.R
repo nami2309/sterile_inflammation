@@ -151,3 +151,39 @@ extract_saved_files <- function(script_path) {
 # 6 filtered_sobj                                     file=./output/processed/02_SI_sobj_qc.Robj
 # 7 filtered_sobj     file=/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_df.Robj
 # 8  sobj_post_df                                file=./output/processed/02_SI_sobj_post_df.Robj
+
+#Function to calculate how many PCs to use for UMAP
+select_dims <- function(object, reduction) {
+  # Approach 1:
+  # The point where individual principal components only contribute 5% of standard deviation
+  # and the principal components cumulatively contribute 90% of the standard deviation.
+  pct <- object[[reduction]]@stdev / sum(object[[reduction]]@stdev) * 100
+  cumu <- cumsum(pct)
+  co1 <- which(cumu > 90 & pct < 5)[1]
+  print(paste('Approach 1: Dims = ', co1, sep = ''))
+
+  # Approach 2:
+  # The point where the percent change in variation between consecutive PCs is < 0.1%.
+  co2 <- sort(which((pct[1:(length(pct) - 1)] - pct[2:length(pct)]) > 0.1), decreasing = TRUE)[1] + 1
+  print(paste('Approach 2: Dims = ', co2, sep = ''))
+
+  # Approach 3:
+  # The point where the cumulative variance explained by the PCs is at least 95%.
+  # We square the PC standard deviations to get variance, sum them, and compute cumulative fraction.
+  stdevs <- object[[reduction]]@stdev
+  var_per_pc <- stdevs^2
+  total_variance <- sum(var_per_pc)
+  var_explained <- var_per_pc / total_variance
+  cum_var_explained <- cumsum(var_explained)
+  co3 <- which(cum_var_explained >= 0.95)[1]
+  print(paste('Approach 3: Dims = ', co3, sep = ''))
+
+  # Print a brief explanation of each approach
+  cat("\nSummary of Approaches:\n")
+  cat("Approach 1: The point where PCs collectively contribute ~90% of the standard deviation and the individual PCs only contribute 5% of standard deviation.\n")
+  cat("Approach 2: The point where the percent change in variation between consecutive PCs is < 0.1%.\n")
+  cat("Approach 3: The point where the cumulative variance explained by the PCs is at least 95%.\n\n")
+
+  # Return the dims based on the minimum of the three approaches
+  return(1:min(co1, co2, co3))
+}

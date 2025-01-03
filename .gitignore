@@ -28,6 +28,8 @@ renv/
 # Analysis files
 docs/analysis/cache*
 docs/analysis/site_libs
+docs/site_libs
+docs/search.json
 
 # Data
 data/
@@ -37,9 +39,6 @@ output/
 
 # Cache
 analysis/cache/
-
-# Freeze
-_freeze/
 
 # PNG files
 *.png
