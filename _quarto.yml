@@ -32,10 +32,6 @@ website:
   #     href: license.html
   #   - icon: fa-github
   #     href: https://github.com/lazappi/phd-thesis-analysis
-publish:
-  gh-pages:
-    branch: gh-pages
-    path: /  # Deploy to the root of gh-pages
 format:
   html:
     theme: Default
