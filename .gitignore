@@ -1,6 +1,5 @@
 #Output files since we are using gh-pages to publish
 /.quarto/
-/docs/
 
 # R session related files
 .Rproj.user
