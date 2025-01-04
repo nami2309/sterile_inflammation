@@ -3,7 +3,7 @@ project:
   output-dir: docs/
 website:
   title: "Sterile inflammation"
-  site-url: /sterile_inflammation/docs
+  site-url: /sterile_inflammation
   navbar:
     left:
       - href: index.qmd

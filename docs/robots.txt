@@ -1,1 +1,1 @@
-Sitemap: /sterile_inflammation/docs/sitemap.xml
+Sitemap: /sterile_inflammation/sitemap.xml
