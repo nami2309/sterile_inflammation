@@ -1,6 +1,6 @@
 project:
   type: website
-  output-dir: _site
+  output-dir: docs
 website:
   title: "Sterile inflammation"
   navbar:
@@ -40,10 +40,4 @@ format:
     code-fold: true
     smooth-scroll: true
 editor: visual
-publish:
-  gh-pages:
-    branch: gh-pages  # Use the gh-pages branch for deployment
-    path: /  # Deploy to the root of the gh-pages branch
-
-
 
