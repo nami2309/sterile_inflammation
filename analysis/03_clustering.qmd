@@ -659,6 +659,7 @@ is_present <- known_genes %in% rownames(seurat)
 ```
 
 ::: panel-tabset
+
 ```{r vst_clustree_genes, results = "hide"}
 src_list <- lapply(known_genes[is_present], function(gene) {
   rand_suffix <- paste0(sample(letters, 3, replace=TRUE), collapse="")

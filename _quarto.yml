@@ -35,6 +35,10 @@ website:
   #     href: https://github.com/lazappi/phd-thesis-analysiswebsite
 format:
   html:
+    embed-resources: false  # or true if you want them in a single HTML file
+    self-contained: false   # ensures separate resource folders
+    # This is the key:
+    resource-paths: ["analysis"]
     theme: Default
     css: styles.css
     toc: true
