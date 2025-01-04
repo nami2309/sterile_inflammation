@@ -109,7 +109,6 @@ In this document we are going to perform clustering on the high-quality filtered
 Before we begin clustering we need to select a set of genes to perform analysis on. This should capture most of the variability in the dataset and differences between cell types. We will do this using a couple of different methods.
 
 ::: panel-tabset
-
 ## Seurat: SCTransform
 
 Seurat's default method identifies genes that are outliers on a plot between mean expression and variability of a gene based on cutoff thresholds.

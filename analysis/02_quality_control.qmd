@@ -5,6 +5,9 @@ format:
     theme: Default
     toc: true
     code-fold: true
+execute:
+  echo: true
+  warning: false
 editor_options: 
   chunk_output_type: console
 ---
@@ -42,10 +45,6 @@ knitr::opts_chunk$set(
     warning        = FALSE,
     timeit         = TRUE
 )
-knitr::opts_chunk$set(c("png", "jpg", "tiff", "ps"),
-                      dpi = 600,
-                      echo = FALSE)
-knitr::opts_chunk$set(fig.retina = 1)
 ```
 
 ```{r setup, message=FALSE, warning=FALSE, cache=FALSE, eval=TRUE}

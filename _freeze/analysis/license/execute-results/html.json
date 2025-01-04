@@ -1,0 +1,15 @@
+{
+  "hash": "5481289a8f62841bc7dbf74925811159",
+  "result": {
+    "engine": "knitr",
+    "markdown": "---\ntitle: \"License\"\noutput:\n  workflowr::wflow_html:\n    toc: false\neditor_options:\n  chunk_output_type: console\n---\n\n\n\nWhat license are you using for your code? See [choosealicense.com][choose] for\nhelp deciding. It's a convention to save a file `LICENSE` in the root of your\nGit repo that contains the license text.\n\nWhat license are you using for the written content on your site? It is\ntraditional to choose a [Creative Commons][cc] license for this type of content.\n\n[choose]: https://choosealicense.com/\n[cc]: https://creativecommons.org/choose/\n\nHow should others cite your work? It's a convention to save a file `CITATION`\nin the root of your Git repo that contains the citation information.\n",
+    "supporting": [],
+    "filters": [
+      "rmarkdown/pagebreak.lua"
+    ],
+    "includes": {},
+    "engineDependencies": {},
+    "preserve": {},
+    "postProcess": true
+  }
+}

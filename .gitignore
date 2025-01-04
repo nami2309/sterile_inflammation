@@ -29,9 +29,6 @@ renv/
 *.log
 .DS_Store
 
-# Analysis cache files
-docs/analysis/cache*
-
 # Data
 data/
 

@@ -1,6 +1,6 @@
 project:
   type: website
-  output-dir: docs
+  output-dir: docs/
 website:
   title: "Sterile inflammation"
   navbar:
@@ -31,7 +31,7 @@ website:
   #   - text: "License"
   #     href: license.html
   #   - icon: fa-github
-  #     href: https://github.com/lazappi/phd-thesis-analysis
+  #     href: https://github.com/lazappi/phd-thesis-analysiswebsite
 format:
   html:
     theme: Default
@@ -39,5 +39,8 @@ format:
     toc: true
     code-fold: true
     smooth-scroll: true
-editor: visual
+editor: source
+execute:
+  freeze: auto
+
 
