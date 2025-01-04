@@ -1,3 +1,7 @@
+#Output files since we are using gh-pages to publish
+/.quarto/
+/docs/
+
 # R session related files
 .Rproj.user
 .Rhistory
@@ -25,7 +29,7 @@ renv/
 *.log
 .DS_Store
 
-# Analysis files
+# Analysis cache files
 docs/analysis/cache*
 
 # Data

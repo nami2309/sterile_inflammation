@@ -1,14 +1,18 @@
 ---
 title: "Empty droplets"
-freeze: true 
 format:
   html:
+    theme: Default
+    toc: true
     code-fold: true
 execute:
   echo: true
 ---
 
 ```{r knitr, include = TRUE, echo=FALSE}
+#add to YML header if creating a standalone html to send to Shweta
+    # embed-resources: true
+    # self-contained: true
 DOCNAME = "01_empty_droplets"
 NOW <- Sys.time()
 
@@ -204,7 +208,7 @@ p <- ggplot(bc_data, aes(x = Rank, y = Total)) +
     ylab("Total counts") +
     theme_minimal()
 p
-ggsave(here::here("output", DOCNAME, paste0(tag, "_1_barcodes_kept.png")), p,
+ggsave(here::here("output/plots", DOCNAME, paste0(tag, "_1_barcodes_kept.png")), p,
        width = 7, height = 5, scale = 1)
 ```
 
@@ -252,7 +256,7 @@ p <- colData(raw) %>%
     theme_minimal()
 p
 
-ggsave(here::here("output", DOCNAME, paste0(tag, "_2_empty_droplets_distribution.png")), p,
+ggsave(here::here("output/plots", DOCNAME, paste0(tag, "_2_empty_droplets_distribution.png")), p,
        width = 7, height = 5, scale = 1)
 ```
 
@@ -272,7 +276,7 @@ p <- colData(raw) %>%
     theme_minimal()
 p
 
-ggsave(here::here("output", DOCNAME, paste0(tag, "_3_empty_droplets_negative_prob.png")), p,
+ggsave(here::here("output/plots", DOCNAME, paste0(tag, "_3_empty_droplets_negative_prob.png")), p,
        width = 7, height = 5, scale = 1)
 ```
 
@@ -329,6 +333,7 @@ colData(selected)$SelMethod[!colData(selected)$EmpDropsFilt] <- "CellRanger"
 This table describes parameters used and set in this document.
 
 ```{r parameters, echo=TRUE}
+library(DT)
 params <- list(
     list(
         Parameter = "n_droplets",
@@ -367,8 +372,16 @@ params <- list(
     )
 )
 
-params <- jsonlite::toJSON(params, pretty = TRUE)
-knitr::kable(jsonlite::fromJSON(params))
+# Convert the list to a data frame
+params_df <- do.call(rbind, lapply(params, as.data.frame))
+
+# Print the datatable without page length or length menu options
+datatable(
+  params_df,
+  options = list(),
+  rownames = TRUE
+)
+
 
 # json_table <- jsonlite::fromJSON(params)
 # 
@@ -386,15 +399,10 @@ save(selected, file=here::here("output/processed/01_SI_selected.Robj"))
 ```
 
 ```{r output, echo=TRUE}
-readr::write_lines(params, here::here("output", DOCNAME, "parameters.json"))
+readr::write_lines(params, here::here("output/data", DOCNAME, "parameters.json"))
 
 # Assuming all calls return single strings
 file_links <- c(
-    getDownloadLink("parameters.json", DOCNAME),
-    getDownloadLink("01_SI_1_barcodes_kept.png", DOCNAME),
-    getDownloadLink("01_SI_2_empty_droplets_distribution.png", DOCNAME),
-    getDownloadLink("01_SI_3_barcodes_negative_prob.png", DOCNAME),
-    getDownloadLink("01_SI_4_compare_methods.png", DOCNAME),
     getDownloadLink("01_SI_selected.Robj", DOCNAME)
 )
 
@@ -402,11 +410,6 @@ file_links <- c(
 results_df <- data.frame(
     File = file_links,
     Description = c(
-        "Parameters set and used in this analysis",
-        "Barcodes kept in CellRanger V3 (PNG)",
-        "Distribution of empty droplets (PNG)",
-        "Negative log probability of barcode counts (PNG)",
-        "Compare both methods (PNG)",
         "A SingleCellExperiment object of droplets that were called as cells by either Cell ranger v3 or Empty drops"
     ),
     stringsAsFactors = FALSE  # Optional: Prevent factors if not needed

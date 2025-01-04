@@ -1,15 +1,18 @@
 ---
 title: "Clustering"
+format:
+  html:
+    theme: Default
+    toc: true
+    code-fold: true
 editor_options: 
   chunk_output_type: console
 ---
 
 ```{r knitr, include = FALSE}
 #remember to add the following chunk to the YML header when rendering this file if you want to send it to someone, so that the plots are embedded in the file.
-# format:
-#   html:
-#     embed-resources: true
-#     self-contained: true
+    # embed-resources: true
+    # self-contained: true
     
 DOCNAME = "03_clustering"
 NOW <- Sys.time()
@@ -43,10 +46,6 @@ knitr::opts_chunk$set(
     warning        = FALSE,
     timeit         = TRUE
 )
-knitr::opts_chunk$set(c("png", "jpg", "tiff", "ps"),
-                      dpi = 600,
-                      echo = FALSE)
-knitr::opts_chunk$set(fig.retina = 1)
 ```
 
 ```{r libaries, cache = FALSE}
@@ -110,6 +109,7 @@ In this document we are going to perform clustering on the high-quality filtered
 Before we begin clustering we need to select a set of genes to perform analysis on. This should capture most of the variability in the dataset and differences between cell types. We will do this using a couple of different methods.
 
 ::: panel-tabset
+
 ## Seurat: SCTransform
 
 Seurat's default method identifies genes that are outliers on a plot between mean expression and variability of a gene based on cutoff thresholds.

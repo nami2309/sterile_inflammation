@@ -1,6 +1,5 @@
 ---
 title: "Quality control"
-freeze: true 
 format:
   html:
     theme: Default
@@ -11,6 +10,9 @@ editor_options:
 ---
 
 ```{r knitr, include = FALSE}
+#add to YML header if creating a standalone html to send to Shweta
+    # embed-resources: true
+    # self-contained: true
 DOCNAME = "02_quality_control"
 NOW <- Sys.time()
 
@@ -1654,4 +1656,3 @@ knitr::kable(jsonlite::fromJSON(params))
 ```{r session-info, cache = FALSE}
 devtools::session_info()
 ```
-
