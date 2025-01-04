@@ -1,5 +1,6 @@
 project:
   type: website
+  base-url: /sterile_inflammation
   output-dir: docs/
 website:
   title: "Sterile inflammation"
@@ -42,8 +43,6 @@ format:
 editor: source
 execute:
   freeze: auto
-website:
-  base-url: /sterile_inflammation
 
 
 
