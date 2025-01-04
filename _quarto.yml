@@ -1,9 +1,9 @@
 project:
   type: website
-  base-url: /sterile_inflammation
   output-dir: docs/
 website:
   title: "Sterile inflammation"
+  site-url: /sterile_inflammation
   navbar:
     left:
       - href: index.qmd
@@ -41,8 +41,7 @@ format:
     code-fold: true
     smooth-scroll: true
 editor: source
-execute:
-  freeze: auto
+
 
 
 

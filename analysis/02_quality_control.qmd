@@ -16,6 +16,7 @@ editor_options:
 #add to YML header if creating a standalone html to send to Shweta
     # embed-resources: true
     # self-contained: true
+
 DOCNAME = "02_quality_control"
 NOW <- Sys.time()
 
@@ -32,7 +33,7 @@ knitr::knit_hooks$set(timeit = function(before) {
 
 knitr::opts_chunk$set(
     autodep        = TRUE,
-    cache          = TRUE,
+    cache          = FALSE,
     cache.path     = paste0("cache/", DOCNAME, "/"),
     cache.comments = FALSE,
     echo           = TRUE,
@@ -306,9 +307,9 @@ abline(h = median(mean_logcounts), col = "red", lty = 2)
 rm(selected)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_1_lib_size_vs_norm_counts-1.png)
+![](../output/plots/02_quality_control/02_SI_1_lib_size_vs_norm_counts-1.png)
 
-![](02_quality_control_files/figure-html/02_SI_1_lib_size_vs_norm_counts-2.png)
+![](../output/plots/02_quality_control/02_SI_1_lib_size_vs_norm_counts-2.png)
 
 ### Seurat {.unnumbered}
 
@@ -328,7 +329,7 @@ plot(log10(library_sizes), mean_logcounts,
 abline(h = median(mean_logcounts), col = "red", lty = 2)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_2_check_normalization_in_so-1.png)
+![](../output/plots/02_quality_control/02_SI_2_check_normalization_in_so-1.png)
 :::
 
 # Exploration
@@ -347,7 +348,7 @@ load(paste0(proj_dir, "/output/processed/02_SI_sobj_scale.Robj"))
 outlierHistogramSeurat(sobj, feature="nCount_RNA", mads = 1:6)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_3_counts_MADs-1.png)
+![](../output/plots/02_quality_control/02_SI_3_counts_MADs-1.png)
 
 ### Total features {.unnumbered}
 
@@ -355,7 +356,7 @@ outlierHistogramSeurat(sobj, feature="nCount_RNA", mads = 1:6)
 outlierHistogramSeurat(sobj, feature="nFeature_RNA", mads = 1:6)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_4_features_MADs-1.png)
+![](../output/plots/02_quality_control/02_SI_4_features_MADs-1.png)
 
 ### Percent mitochondrial {.unnumbered}
 
@@ -363,7 +364,7 @@ outlierHistogramSeurat(sobj, feature="nFeature_RNA", mads = 1:6)
 outlierHistogramSeurat(sobj, feature="percent.mt", mads = 1:6)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_5_percentmt_MADs-1.png)
+![](../output/plots/02_quality_control/02_SI_5_percentmt_MADs-1.png)
 :::
 
 ## Expression by cell - manual
@@ -457,7 +458,7 @@ p <- p1 + p2 + p3 + p4 + p5 + plot_layout(
 p
 ```
 
-![](02_quality_control_files/figure-html/02_SI_6_nCount_RNA_before_filt-1.png)
+![](../output/plots/02_quality_control/02_SI_6_nCount_RNA_before_filt-1.png)
 
 ### nFeature_RNA {.unnumbered}
 
@@ -533,7 +534,7 @@ p <- p1 + p2 + p3 + p4 + p5 + plot_layout(
 p
 ```
 
-![](02_quality_control_files/figure-html/02_SI_7_nFeature_RNA_before_filt-1.png)
+![](../output/plots/02_quality_control/02_SI_7_nFeature_RNA_before_filt-1.png)
 
 ### Percent mitochondrial {.unnumbered}
 
@@ -600,7 +601,7 @@ p <- p1 + p2 + p3 + p4 + plot_layout(
 p
 ```
 
-![](02_quality_control_files/figure-html/02_SI_8_percentmt_before_filt-1.png)
+![](../output/plots/02_quality_control/02_SI_8_percentmt_before_filt-1.png)
 
 ### Log10 genes per UMI {.unnumbered}
 
@@ -634,7 +635,7 @@ p
 rm(sobj)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_9_log10genes_before_filt-1.png)
+![](../output/plots/02_quality_control/02_SI_9_log10genes_before_filt-1.png)
 :::
 
 # Filtering #1
@@ -797,7 +798,7 @@ p
 rm(filtered_sobj)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_10_post_filtering_qc_metrics-1.png)
+![](../output/plots/02_quality_control/02_SI_10_post_filtering_qc_metrics-1.png)
 
 We have removed some extreme outliers but QC is always an iterative process, so we will look at some more factors to ensure only quality cells remain. We will also fine tune QC to set some sample-specific thresholds.
 
@@ -873,9 +874,9 @@ p2
 rm(filtered_sobj)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_11_doublets-1.png)
+![](../output/plots/02_quality_control/02_SI_11_doublets-1.png)
 
-![](02_quality_control_files/figure-html/02_SI_11_doublets-2.png)
+![](../output/plots/02_quality_control/02_SI_11_doublets-2.png)
 
 # Filtering #2
 
@@ -1072,9 +1073,9 @@ p <- p9 + p10 + plot_layout(
 p
 ```
 
-![](02_quality_control_files/figure-html/02_SI_12_post_df_filtering_qc_metrics-1.png)
+![](../output/plots/02_quality_control/02_SI_12_post_df_filtering_qc_metrics-1.png)
 
-![](02_quality_control_files/figure-html/02_SI_12_post_df_filtering_qc_metrics-2.png)
+![](../output/plots/02_quality_control/02_SI_12_post_df_filtering_qc_metrics-2.png)
 
 # Dimensionality reduction {.tabset}
 
@@ -1113,7 +1114,7 @@ p <- p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(
 p
 ```
 
-![](02_quality_control_files/figure-html/02_SI_13_post_filtering_pca-1.png)
+![](../output/plots/02_quality_control/02_SI_13_post_filtering_pca-1.png)
 
 ### UMAP
 
@@ -1132,7 +1133,7 @@ p <- p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(
 p
 ```
 
-![](02_quality_control_files/figure-html/02_SI_14_post_filtering_umap-1.png)
+![](../output/plots/02_quality_control/02_SI_14_post_filtering_umap-1.png)
 
 ### t-SNE
 
@@ -1151,7 +1152,7 @@ p <- p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(
 p
 ```
 
-![](02_quality_control_files/figure-html/02_SI_15_post_filtering_tsne-1.png)
+![](../output/plots/02_quality_control/02_SI_15_post_filtering_tsne-1.png)
 :::
 
 Seems like there are no extreme clusters formed due to technical factors. Next, we will look at validating our filters by various means.
@@ -1200,7 +1201,7 @@ p_gene_exp
 #The outlier gene expressed in 100% cells and mean exp 5 is Gm42418
 ```
 
-![](02_quality_control_files/figure-html/02_SI_16_gene_exp_freq-1.png)
+![](../output/plots/02_quality_control/02_SI_16_gene_exp_freq-1.png)
 
 ## Gene variance
 
@@ -1249,7 +1250,7 @@ plotVarPart(vp)
 # plotVarPart(vp)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_17_variance-1.png)
+![](../output/plots/02_quality_control/02_SI_17_variance-1.png)
 
 Since most of the variance in gene expression in the dataset is explained by residuals, this means that we did not introduce any bias.
 
@@ -1293,7 +1294,7 @@ ggplot(sobj_post_df@meta.data, aes(x = PC_1, y = PC_2, color = outlier)) +
 table(sobj_post_df@meta.data$outlier)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_18_pca_outliers_counts_features-1.png)
+![](../output/plots/02_quality_control/02_SI_18_pca_outliers_counts_features-1.png)
 
 Since we don't see any egregious outliers, our filtering did not introduce any bias.
 
@@ -1378,7 +1379,7 @@ kept_lost %>%
     head(100)
 ```
 
-![](02_quality_control_files/figure-html/02_SI_19_genes_kept_lost_exp_freq-1.png)
+![](../output/plots/02_quality_control/02_SI_19_genes_kept_lost_exp_freq-1.png)
 
 # Main figures
 
@@ -1470,7 +1471,7 @@ fig <- plot_grid(
 fig
 ```
 
-![](02_quality_control_files/figure-html/02_SI_main_1_thresholds-1.png)
+![](../output/plots/02_quality_control/02_SI_main_1_thresholds-1.png)
 
 ## Validation
 
@@ -1568,7 +1569,7 @@ fig <- plot_grid(p1, umap_plot, ncol = 2, labels = c("", "B"),
 fig
 ```
 
-![](02_quality_control_files/figure-html/02_SI_main_2_validation-1.png)
+![](../output/plots/02_quality_control/02_SI_main_2_validation-1.png)
 
 # Summary
 
@@ -1655,3 +1656,4 @@ knitr::kable(jsonlite::fromJSON(params))
 ```{r session-info, cache = FALSE}
 devtools::session_info()
 ```
+

@@ -14,6 +14,7 @@ execute:
 #add to YML header if creating a standalone html to send to Shweta
     # embed-resources: true
     # self-contained: true
+
 DOCNAME = "01_empty_droplets"
 NOW <- Sys.time()
 
@@ -30,7 +31,7 @@ knitr::knit_hooks$set(timeit = function(before) {
 
 knitr::opts_chunk$set(
     autodep        = TRUE,
-    cache          = TRUE,
+    cache          = FALSE,
     cache.path     = paste0("cache/", DOCNAME, "/"),
     cache.comments = FALSE,
     echo           = TRUE,
