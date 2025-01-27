@@ -1,0 +1,253 @@
+---
+title: "04_major_celltype_annot.qmd"
+format:
+  html:
+    theme: Default
+    toc: true
+    code-fold: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+DOCNAME <- "04_major_celltype_annot"
+NOW <- Sys.time()
+script_number <- "04_"
+project <- "SI"
+tag <- paste0(script_number,project)
+
+knitr::knit_hooks$set(timeit = function(before) {
+  if (before) {
+    print(paste("Start:", Sys.time()))
+    NOW <<- Sys.time()
+  } else {
+    print(paste("Stop:", Sys.time()))
+    print(Sys.time() - NOW)
+  }
+})
+
+knitr::opts_chunk$set(
+  autodep        = TRUE,
+  cache          = FALSE,
+  cache.path     = paste0("cache/", DOCNAME, "/"),
+  cache.comments = FALSE,
+  echo           = TRUE,
+  error          = FALSE,
+  fig.align      = "center",
+  fig.width      = 7,
+  fig.height     = 5,
+  message        = FALSE,
+  warning        = FALSE,
+  timeit         = TRUE
+)
+
+# Define sample names
+sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
+
+sample_colors <- c(
+  "PVM_0h"  = "#EE9A49",  
+  "PVM_4h"  = "#CD853F", 
+  "PVM_7h" = "#8B5A2B",  
+  "PVEU_0h"  = "#7EC0EE",
+  "PVEU_4h" = "#6CA6CD", 
+  "PVEU_7h" = "#4A708B"
+)
+```
+
+```{r libraries, cache=FALSE}
+# For Seurat object
+library(Seurat)
+
+# For alternative DE methods:
+library(MAST)
+
+# For parallelization
+library(BiocParallel)
+
+# For data wrangling, plotting, etc.
+library(tidyverse)  
+library(cowplot)
+library(dplyr)
+library(ggplot2)
+
+library(EnhancedVolcano)
+```
+
+```{r load, cache=FALSE}
+proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
+out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/04_major_celltype_annot/"
+plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/"
+sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
+
+source(paste0(proj_dir,"/functions/universal.R"))
+source(paste0(proj_dir,"/functions/plotting.R"))
+source(paste0(proj_dir,"/functions/output.R"))
+
+load(paste0(sobj_dir,"03_SI_clean_sobj.Robj"))
+```
+
+```{r seu, cache=FALSE}
+seurat_obj <- seurat_sct
+rm(seurat_sct)
+
+library(future)
+oopts <- options(future.globals.maxSize = 20.0 * 1e9) 
+on.exit(options(oopts))
+f <- future({ expr })  ## Launch a future with large objects
+
+# Identify the seurat_clusterss:
+seurat_clusterss <- sort(unique(Idents(seurat_obj)))
+```
+
+# Introduction
+
+In this document, we will identify **marker genes** for the seurat_clusterss in our seurat object, and identify **major cell types**. 
+
+First we will identify marker genes.
+
+There was some confusion regarding performing DE analysis after SCTransform. In this context, I found this (https://github.com/satijalab/seurat/issues/2180 and https://github.com/satijalab/seurat/issues/2115):
+
+"The scale.data (in SCTransform slot) is the pearson residuals that come out of regularized NB regression. The counts and data slot transforms these values back into integer values (stored in counts), and then performs a log-transformation (stored in data).
+
+SCTransform (by default) only stores pearson residuals (scale.data) for 3,000 variable features, to save memory. When possible, we try to perform operations directly on the Pearson residuals themselves. However, these values are not sparse (contain exclusively non-zero elements), so they take a lot of memory to store, and as a result we don't compute them for all genes by default. Unless you change the defaults in SCTransform, performing DE on the scale.data slot would only test differences in variable genes. We also find that pearson residuals are challenging to visualize/interpret on either Feature or Violin plots, and therefore find the data slot in the SCT assay quite useful for this.
+
+So performing DE on the scale.data slot of this assay means you are only testing 3,000 genes. Performing DE on the RNA assay will test all genes."
+
+**Therefore, I have changed the default assay to RNA, and normalized and scaled the data for downstream markers analysis in this document.**
+
+```{r seurat, cache=FALSE, eval=FALSE}
+DefaultAssay(seurat_obj) <- "RNA" 
+seurat_obj <- NormalizeData(seurat_obj)
+seurat_obj <- ScaleData(seurat_obj)
+save(seurat_obj, file = paste0(sobj_dir,tag,"_RNA_sobj.Robj"))
+```
+
+I will compare marker genes at res 0.2 and 0.4.
+
+```{r degs, cache=FALSE, eval=FALSE}
+load(paste0(sobj_dir,tag,"_RNA_sobj.Robj"))
+res <- 0.2
+Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
+degs_0.2 <- FindAllMarkers(seurat_obj, only.pos = TRUE, 
+                           assay = "RNA",
+                           min.pct = 0.25, logfc.threshold = 0.1)
+
+# Extract top 20 genes for each cluster
+top_genes <- degs_0.2 %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 20)
+
+# Save to CSV file
+write.csv(top_genes, paste0(out_data_dir,tag,"_markers_res0.2.csv"), 
+          row.names = FALSE)
+
+res <- 0.4
+Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
+degs_0.4 <- FindAllMarkers(seurat_obj, only.pos = TRUE, 
+                           assay = "RNA",
+                           min.pct = 0.25, logfc.threshold = 0.1)
+
+# Extract top 20 genes for each cluster
+top_genes <- degs_0.4 %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 20)
+
+# Save to CSV file
+write.csv(top_genes, paste0(out_data_dir,tag,"_markers_res0.4.csv"), 
+          row.names = FALSE)
+```
+
+::: panel-tabset
+
+## Res 0.2 UMAP
+
+```{r print_degs_0.2, cache=FALSE, eval=TRUE}
+res <- 0.2
+Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
+DimPlot(seurat_obj, label = TRUE)
+```
+
+## Res 0.2 DEGs
+
+```{r print_degs_0.2, cache=FALSE, eval=TRUE}
+library(DT)
+top_genes <- read.csv(paste0(out_data_dir,tag,"_markers_res0.2.csv"))
+
+datatable(
+  top_genes,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE,
+)
+```
+
+## Res 0.4 UMAP
+
+```{r print_degs_0.2, cache=FALSE, eval=TRUE}
+res <- 0.4
+Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
+DimPlot(seurat_obj, label = TRUE)
+```
+
+## Res 0.4 DEGs
+
+```{r print_degs_0.4, cache=FALSE, eval=TRUE}
+top_genes <- read.csv(paste0(out_data_dir,tag,"_markers_res0.4.csv"))
+
+datatable(
+  top_genes,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE,
+)
+```
+
+:::
+
+```{r plots, cache.lazy = FALSE}
+seurat_obj@meta.data[,'celltype'] <- as.numeric(seurat_obj@active.ident)-1
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(5))] <- 'Monocytes'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(0, 1, 8, 9))] <- 'Macrophages'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(3))] <- 'Neutrophils'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(6,7))] <- 'Endothelial cells'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(12))] <- 'Mast cells'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(2, 11))] <- 'B-cells'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(4, 10, 13))] <- 'Unknown'
+seurat_obj@meta.data$celltype[which(seurat_obj@meta.data$sample %in% c("PVM"))] <- 'PVM'
+
+
+
+DimPlot(seurat_obj, repel = TRUE, label = FALSE, 
+        pt.size = 0.5, group.by = "celltype") + 
+  NoAxes() + labs(title = NULL)
+
+DimPlot(seurat_obj, repel = TRUE, label = FALSE, 
+        pt.size = 0.5, group.by = "celltype", split.by = "orig.ident") + 
+  NoAxes() + labs(title = NULL)
+
+features_celltypes <- c(
+  "Ccr2", "Irf5", "S100a4", "Adgre1", 
+  "Csf1r", "Folr2", 
+  "Mmp9", "Lcn2", "Retnlg", "S100a8", 
+  "Pecam1", 
+  "Cldn5", "Emcn", "Sox17", 
+  "Kit", "Cpa3", "Tpsb2",
+  "Des", "Acta2", "Pdgfrb", 
+  "Cd19", "Blk", "Cd22"
+)
+
+
+# Generate DotPlot 
+DotPlot(seurat_obj, features = features_celltypes, group.by = "seurat_clusters",
+        col.min = -1,
+        col.max = 5,
+        dot.scale = 5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1.0, size = 12),
+        axis.text.y = element_text(angle = 0, hjust = 1.0, size = 15)) +
+  labs(x = NULL, y = NULL)
+
+DoHeatmap(seurat_obj, features = features_celltypes, 
+          group.by = "celltype",
+          group.colors = celltype_cols,
+          size = 3) 
+```

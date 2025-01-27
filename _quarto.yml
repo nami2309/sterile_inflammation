@@ -3,7 +3,6 @@ project:
   output-dir: docs/
 website:
   title: "Sterile inflammation"
-  site-url: /sterile_inflammation
   navbar:
     left:
       - href: index.qmd
@@ -11,11 +10,11 @@ website:
       - text: "Analysis"
         menu:
           - text: "Empty droplets"
-            href: analysis/01_empty_droplets.html
+            href: analysis/01_empty_droplets.qmd
           - text: "Quality control"
-            href: analysis/02_quality_control.html
+            href: analysis/02_quality_control.qmd
           - text: "Clustering"
-            href: analysis/03_clustering.html
+            href: analysis/03_clustering.qmd
   #       - text: "Marker genes"
   #         href: 04-marker-genes.html
   #       - text: "PAGA"
