@@ -5,16 +5,13 @@ format:
     theme: Default
     toc: true
     code-fold: true
+    self-contained: true
 execute:
   echo: true
   warning: false
 ---
 
 ```{r knitr, include = TRUE, echo=FALSE}
-#add to YML header if creating a standalone html to send to Shweta
-    # embed-resources: true
-    # self-contained: true
-
 DOCNAME = "01_empty_droplets"
 NOW <- Sys.time()
 

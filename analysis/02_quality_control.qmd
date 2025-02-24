@@ -5,6 +5,7 @@ format:
     theme: Default
     toc: true
     code-fold: true
+    self-contained: true
 execute:
   echo: true
   warning: false
@@ -13,9 +14,6 @@ editor_options:
 ---
 
 ```{r knitr, include = FALSE}
-#add to YML header if creating a standalone html to send to Shweta
-    # embed-resources: true
-    # self-contained: true
 
 DOCNAME = "02_quality_control"
 NOW <- Sys.time()
@@ -910,6 +908,7 @@ src_list <- lapply(names(sobj_out_list), function(sample_name) {
     plot_code <- c(
       paste0("```{r doublet-umap-", sample_name, "-", rand_suffix, 
              ", fig.height=5, fig.width=5, echo=FALSE}"),
+      paste0("sobj_sub <- sobj_out_list[['", sample_name, "']]"),
       paste0("DimPlot(sobj_sub, reduction='umap', group.by='", df_class_col, "') +"),
       paste0("  ggtitle('Doublet classification (", sample_name, "') + NoAxes()"),
       "```"
@@ -925,6 +924,51 @@ src_list <- lapply(names(sobj_out_list), function(sample_name) {
 
 # Combine all the chunks and insert them into the document
 out <- knit_child(text = unlist(src_list), options = list(cache=FALSE))
+
+# We'll assume `sobj_out_list` is already defined in your environment.
+
+for (sample_name in names(sobj_out_list)) {
+  
+  # Retrieve the processed object
+  sobj_sub <- sobj_out_list[[sample_name]]
+  
+  # Define panel/tabset markers
+  panel_start <- ":::: {.panel-tabset}"
+  panel_end   <- "::::"
+  
+  # Tab heading and sub-heading
+  tab_heading <- paste0("### Sample: ", sample_name)
+  sub_heading <- "#### UMAP: Doublet classification"
+  
+  # Look for the doublet classification column
+  DF_col <- grep("DF.classifications", colnames(sobj_sub@meta.data), value = TRUE)
+  
+  # Print the lines
+  cat(panel_start, sep = "\n")
+  cat(tab_heading,   sep = "\n")
+  cat(sub_heading,   sep = "\n")
+  
+  if (length(DF_col) > 0) {
+    df_class_col <- DF_col[length(DF_col)]  # newest classification column
+    
+    # Instead of creating an R chunk, we just print the DimPlot call as text
+    cat(
+      paste0(
+        "DimPlot(sobj_sub, reduction='umap', group.by='", 
+        df_class_col, 
+        "') + ggtitle('Doublet classification (", 
+        sample_name, 
+        ")') + NoAxes()"
+      ),
+      sep = "\n"
+    )
+  } else {
+    cat("No doublet classification found.\n", sep = "\n")
+  }
+  
+  cat(panel_end, sep = "\n\n")
+}
+
 ```
 
 Lets see what these classifications look like on the combined object.

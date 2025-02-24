@@ -187,3 +187,59 @@ select_dims <- function(object, reduction) {
   # Return the dims based on the minimum of the three approaches
   return(1:min(co1, co2, co3))
 }
+
+# function to add_mini_axis() that you can use in conjunction with your DimPlot (or any ggplot object) to overlay mini arrow axes.
+# Load necessary libraries (if not already loaded)
+library(ggplot2)
+library(cowplot)
+library(grid)
+
+# Define the function to add mini arrow axes
+add_mini_axis <- function(p,
+                          x = 0.01, y = 0.01,
+                          width = 1, height = 1,
+                          arrow_length = unit(0.1, "inches"),
+                          arrow_type = "open",
+                          arrow_angle = 25,
+                          label_fontsize = 10) {
+
+  # Define arrow style using grid's arrow function
+  arrow_style <- arrow(length = arrow_length, type = arrow_type, angle = arrow_angle)
+
+  # Create a custom grob for the mini axes with arrows
+  axis_grob <- grobTree(
+    # Horizontal arrow for UMAP1
+    segmentsGrob(
+      x0 = unit(0.05, "npc"), x1 = unit(0.25, "npc"),
+      y0 = unit(0.05, "npc"), y1 = unit(0.05, "npc"),
+      gp = gpar(col = "black", lwd = 2),
+      arrow = arrow_style
+    ),
+    # Vertical arrow for UMAP2
+    segmentsGrob(
+      x0 = unit(0.05, "npc"), x1 = unit(0.05, "npc"),
+      y0 = unit(0.05, "npc"), y1 = unit(0.25, "npc"),
+      gp = gpar(col = "black", lwd = 2),
+      arrow = arrow_style
+    ),
+    # Label for UMAP1
+    textGrob("UMAP1", x = unit(0.15, "npc"), y = unit(0.03, "npc"),
+             gp = gpar(fontsize = label_fontsize)),
+    # Label for UMAP2 (rotated so it appears vertically)
+    textGrob("UMAP2", x = unit(0.03, "npc"), y = unit(0.15, "npc"),
+             rot = 90, gp = gpar(fontsize = label_fontsize))
+  )
+
+  # Overlay the mini axes on the provided ggplot object using cowplot's ggdraw
+  p_final <- ggdraw(p) +
+    draw_grob(axis_grob, x = x, y = y, width = width, height = height)
+
+  return(p_final)
+}
+
+# Example usage:
+# Suppose you have a DimPlot stored in p4:
+# p4 <- DimPlot(sobj, reduction = "umap") + theme_minimal()
+# Now add the mini axes:
+# p_final <- add_mini_axis(p4)
+# print(p_final)

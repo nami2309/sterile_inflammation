@@ -5,6 +5,7 @@ format:
     theme: Default
     toc: true
     code-fold: true
+    self-contained: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -73,6 +74,7 @@ library("tidyverse")
 proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
 plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/03_clustering/"
 sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
+out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/03_clustering/"
 
 source(paste0(proj_dir,"/functions/universal.R"))
 ```
@@ -678,19 +680,18 @@ out <- knit_child(text = unlist(src_list), options = list(cache = FALSE))
 :::
 :::
 
-## Selection
+# Selection
+
+Looking at the plots, it seems that SCTransform better captures the biological variability between different samples/time_points. To be conservative, we will keep resolution at 0.2 which gives us 13 clusters.
 
 ```{r select-res}
 res <- 0.2
 Idents(seurat_sct) <- paste0("SCT_snn_res.", res)
 seurat_sct$seurat_clusters <- seurat_sct[[paste0("SCT_snn_res.", res)]]
-```
 
 ```{r save obj, eval=TRUE, echo=FALSE, cache=FALSE}
 save(seurat_sct, file = paste0(sobj_dir,tag,"_clean_sobj.Robj"))
 ```
-
-Looking at the plots, it seems that SCTransform better captures the biological variability between different samples/time_points. To be conservative, we will keep resolution at 0.2 which gives us 13 clusters.
 
 # Validation
 
@@ -706,25 +707,25 @@ To validate the clusters we will repeat some of our quality control plots separa
 
 ```{r cluster-count}
 ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = seurat_clusters)) +
-    geom_bar() +
-    labs(title = "Cluster Counts", x = "Cluster", y = "Count") +
-    theme_minimal()
+  geom_bar() +
+  labs(title = "Cluster Counts", x = "Cluster", y = "Count") +
+  theme_minimal()
 ```
 
 ### PCA
 
 ```{r cluster-pca}
 DimPlot(seurat_sct, reduction = "pca", group.by = "seurat_clusters") +
-    labs(title = "PCA by Cluster") +
-    theme_minimal()
+  labs(title = "PCA by Cluster") +
+  theme_minimal()
 ```
 
 ### UMAP
 
 ```{r cluster-umap}
 DimPlot(seurat_sct, reduction = "umap", group.by = "seurat_clusters") +
-    labs(title = "PCA by Cluster") +
-    theme_minimal()
+  labs(title = "PCA by Cluster") +
+  theme_minimal()
 ```
 
 :::
@@ -738,9 +739,9 @@ DimPlot(seurat_sct, reduction = "umap", group.by = "seurat_clusters") +
 ```{r sample-count}
 ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = orig.ident)) +
   scale_fill_manual(values = sample_colors) +
-    geom_bar() +
-    labs(title = "Sample counts", x = "Cluster", y = "Count") +
-    theme_minimal()
+  geom_bar() +
+  labs(title = "Sample counts", x = "Cluster", y = "Count") +
+  theme_minimal()
 ```
 
 ### Proportion
@@ -748,15 +749,15 @@ ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = orig.ident)) +
 ```{r sample-prop}
 library(dplyr)
 plot_data <- seurat_sct@meta.data %>%
-    count(seurat_clusters, orig.ident) %>%
-    group_by(seurat_clusters) %>%
-    mutate(prop = n / sum(n))
+  count(seurat_clusters, orig.ident) %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
 
 ggplot(plot_data, aes(x = seurat_clusters, y = prop, fill = orig.ident)) +
   scale_fill_manual(values = sample_colors) +
-    geom_col() +
-    labs(title = "Proportions by sample", x = "Cluster", y = "Proportion") +
-    theme_minimal()
+  geom_col() +
+  labs(title = "Proportions by sample", x = "Cluster", y = "Proportion") +
+  theme_minimal()
 ```
 
 ### PCA
@@ -764,8 +765,8 @@ ggplot(plot_data, aes(x = seurat_clusters, y = prop, fill = orig.ident)) +
 ```{r sample-pca}
 DimPlot(seurat_sct, reduction = "pca", group.by = "orig.ident") +
   scale_color_manual(values = sample_colors) +
-    labs(title = "PCA by sample") +
-    theme_minimal()
+  labs(title = "PCA by sample") +
+  theme_minimal()
 ```
 
 ### umap
@@ -773,8 +774,8 @@ DimPlot(seurat_sct, reduction = "pca", group.by = "orig.ident") +
 ```{r sample-umap}
 DimPlot(seurat_sct, reduction = "umap", group.by = "orig.ident") +
   scale_color_manual(values = sample_colors) +
-    labs(title = "umap by sample") +
-    theme_minimal()
+  labs(title = "umap by sample") +
+  theme_minimal()
 ```
 
 :::
@@ -787,9 +788,9 @@ DimPlot(seurat_sct, reduction = "umap", group.by = "orig.ident") +
 
 ```{r sel-count}
 ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = SelMethod)) +
-    geom_bar() +
-    labs(title = "", x = "Cluster", y = "Count") +
-    theme_minimal()
+  geom_bar() +
+  labs(title = "", x = "Cluster", y = "Count") +
+  theme_minimal()
 ```
 
 ### Proportion
@@ -797,30 +798,30 @@ ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = SelMethod)) +
 ```{r sel-prop}
 library(dplyr)
 plot_data <- seurat_sct@meta.data %>%
-    count(seurat_clusters, SelMethod) %>%
-    group_by(seurat_clusters) %>%
-    mutate(prop = n / sum(n))
+  count(seurat_clusters, SelMethod) %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
 
 ggplot(plot_data, aes(x = seurat_clusters, y = prop, fill = SelMethod)) +
-    geom_col() +
-    labs(title = "", x = "Cluster", y = "Proportion") +
-    theme_minimal()
+  geom_col() +
+  labs(title = "", x = "Cluster", y = "Proportion") +
+  theme_minimal()
 ```
 
 ### PCA
 
 ```{r sel-pca}
 DimPlot(seurat_sct, reduction = "pca", group.by = "SelMethod") +
-    labs(title = "") +
-    theme_minimal()
+  labs(title = "") +
+  theme_minimal()
 ```
 
 ### umap
 
 ```{r sel-umap}
 DimPlot(seurat_sct, reduction = "umap", group.by = "SelMethod") +
-    labs(title = "") +
-    theme_minimal()
+  labs(title = "") +
+  theme_minimal()
 ```
 
 :::
@@ -894,27 +895,27 @@ comp_ggplot <- as.ggplot(p_comp)
 comp_ggplot <- comp_ggplot + ggtitle("Common HVGs")
 p <- ((p_sct / p_seu) | comp_ggplot) +
   plot_annotation(tag_levels = "A")
-p  
+p
 ```
 
 ## Principal components
 
 ```{r main_fig_pc_selection}
 p_dims_sct1 <- p_dims_sct1 + geom_vline(xintercept = 13,
-                         linetype = "dashed", 
-                         colour = "red") 
+                                        linetype = "dashed",
+                                        colour = "red")
 p_dims_sct2 <- p_dims_sct2 + geom_vline(xintercept = 13,
-                         linetype = "dashed", 
-                         colour = "red")
+                                        linetype = "dashed",
+                                        colour = "red")
 p_dims_sct <- p_dims_sct1 + p_dims_sct2
 p_dims_vst1 <- p_dims_vst1 + geom_vline(xintercept = 18,
-                         linetype = "dashed", 
-                         colour = "red")
+                                        linetype = "dashed",
+                                        colour = "red")
 p_dims_vst2 <- p_dims_vst2 + geom_vline(xintercept = 18,
-                         linetype = "dashed", 
-                         colour = "red")
+                                        linetype = "dashed",
+                                        colour = "red")
 p_dims_vst <- p_dims_vst1 + p_dims_vst2
-p <- (p_dims_sct | p_dims_vst) 
+p <- (p_dims_sct | p_dims_vst)
 p
 ```
 
@@ -930,15 +931,15 @@ gene_list <- c("Ccr2", "Csf1r", "Folr2", "Retnlg", "Pecam1", "Kit", "Acta2",
                "Blk")
 
 plot_list <- lapply(gene_list, function(gene) {
-    clustree(seurat_sct, node_colour = gene, node_colour_aggr = "mean",
-             layout = "sugiyama",
-             exprs = "scale.data", node_size_range = c(2, 6),
-             edge_width = 0.5, node_text_size = 0) +
-        scale_colour_viridis_c(option = "plasma", begin = 0.3) +
-        ggtitle(gene) +
-        theme(legend.position = "none",
-              plot.title = element_text(size = rel(1.2), hjust = 0.5, 
-                                        vjust = 1, margin = margin(5.5)))
+  clustree(seurat_sct, node_colour = gene, node_colour_aggr = "mean",
+           layout = "sugiyama",
+           exprs = "scale.data", node_size_range = c(2, 6),
+           edge_width = 0.5, node_text_size = 0) +
+    scale_colour_viridis_c(option = "plasma", begin = 0.3) +
+    ggtitle(gene) +
+    theme(legend.position = "none",
+          plot.title = element_text(size = rel(1.2), hjust = 0.5,
+                                    vjust = 1, margin = margin(5.5)))
 })
 
 genes_plot <- plot_grid(plotlist = plot_list, nrow = 2)
@@ -950,14 +951,14 @@ gene_list <- c("Ccr2", "Csf1r", "Folr2", "Retnlg", "Pecam1", "Kit", "Acta2",
                "Blk")
 
 plot_list <- lapply(gene_list, function(gene) {
-    clustree(seurat, node_colour = gene, node_colour_aggr = "mean",
-            node_size_range = c(2, 6),
-            edge_width = 0.5, node_text_size = 0) +
-        scale_colour_viridis_c(option = "plasma", begin = 0.3) +
-        ggtitle(gene) +
-        theme(legend.position = "none",
-              plot.title = element_text(size = rel(1.2), hjust = 0.5, 
-                                        vjust = 1, margin = margin(5.5)))
+  clustree(seurat, node_colour = gene, node_colour_aggr = "mean",
+           node_size_range = c(2, 6),
+           edge_width = 0.5, node_text_size = 0) +
+    scale_colour_viridis_c(option = "plasma", begin = 0.3) +
+    ggtitle(gene) +
+    theme(legend.position = "none",
+          plot.title = element_text(size = rel(1.2), hjust = 0.5,
+                                    vjust = 1, margin = margin(5.5)))
 })
 
 genes_plot <- plot_grid(plotlist = plot_list, nrow = 2)
@@ -1009,7 +1010,7 @@ sizes_plot <- ggplot(metadata, aes(x = seurat_clusters, fill = seurat_clusters))
   ggtitle("Number of cells in clusters") +
   ylab("Count") +
   theme_minimal() +
-  theme(axis.title.x = element_blank(), legend.position = "none") 
+  theme(axis.title.x = element_blank(), legend.position = "none")
 
 # 3. Proportion of `orig.ident` in Clusters
 orig_ident_plot <- metadata %>%
@@ -1022,7 +1023,7 @@ orig_ident_plot <- metadata %>%
   ggtitle("Proportion of orig.ident in clusters") +
   ylab("Proportion") +
   theme_minimal() +
-  theme(axis.title.x = element_blank(), legend.position = "bottom", legend.title = element_blank()) 
+  theme(axis.title.x = element_blank(), legend.position = "bottom", legend.title = element_blank())
 
 # 4. Proportion of `SelMethod` in Clusters
 sel_method_plot <- metadata %>%
@@ -1105,42 +1106,42 @@ res <- 0.2
 resolutions <- seq(0, 1, 0.1)
 
 params <- list(
-    list(
-        Parameter = "Number of genes selected by the VST method",
-        Value = "3000"
-    ),
-    list(
-        Parameter = "Number of genes selected by the SCT method",
-        Value = "3000"
-    ),
-    list(
-        Parameter = "Number of principal components for VST object clustering",
-        Value = 18
-    ),
-     list(
-        Parameter = "Number of principal components for SCT object clustering",
-        Value = 13
-    ),
-    list(
-        Parameter = "Number of neighbours for nearest neighbor graph",
-        Value = 30
-    ),
-    list(
-        Parameter = "Range of possible clustering resolutions",
-        Value = "0-0.9"
-    ),
-    list(
-        Parameter = "Method chosen for downstream analysis",
-        Value = "SCTransform"
-    ),
-    list(
-        Parameter = "Selected resolution parameter for clustering",
-        Value = res
-    ),
-    list(
-        Parameter = "Number of clusters produced by selected resolution",
-        Value = "13"
-    )
+  list(
+    Parameter = "Number of genes selected by the VST method",
+    Value = "3000"
+  ),
+  list(
+    Parameter = "Number of genes selected by the SCT method",
+    Value = "3000"
+  ),
+  list(
+    Parameter = "Number of principal components for VST object clustering",
+    Value = 18
+  ),
+  list(
+    Parameter = "Number of principal components for SCT object clustering",
+    Value = 13
+  ),
+  list(
+    Parameter = "Number of neighbours for nearest neighbor graph",
+    Value = 30
+  ),
+  list(
+    Parameter = "Range of possible clustering resolutions",
+    Value = "0-0.9"
+  ),
+  list(
+    Parameter = "Method chosen for downstream analysis",
+    Value = "SCTransform"
+  ),
+  list(
+    Parameter = "Selected resolution parameter for clustering",
+    Value = res
+  ),
+  list(
+    Parameter = "Number of clusters produced by selected resolution",
+    Value = "13"
+  )
 )
 
 # Convert each sublist to a data frame and bind them together
@@ -1159,7 +1160,7 @@ datatable(
 
 ## Output files
 
-This table describes the output files produced by this document. 
+This table describes the output files produced by this document.
 
 ```{r output, echo=TRUE, eval=FALSE, cache=FALSE}
 saved_files <- extract_saved_files("./analysis/03_clustering.qmd")
@@ -1178,6 +1179,3 @@ knitr::kable(jsonlite::fromJSON(params))
 ```{r session-info, cache = FALSE}
 devtools::session_info()
 ```
-
-
-

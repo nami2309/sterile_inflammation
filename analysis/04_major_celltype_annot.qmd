@@ -163,7 +163,7 @@ write.csv(top_genes, paste0(out_data_dir,tag,"_markers_res0.4.csv"),
 
 ## Res 0.2 UMAP
 
-```{r print_degs_0.2, cache=FALSE, eval=TRUE}
+```{r umap_0.2, cache=FALSE, eval=TRUE}
 res <- 0.2
 Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
 DimPlot(seurat_obj, label = TRUE)
@@ -184,7 +184,7 @@ datatable(
 
 ## Res 0.4 UMAP
 
-```{r print_degs_0.2, cache=FALSE, eval=TRUE}
+```{r umap_0.4, cache=FALSE, eval=TRUE}
 res <- 0.4
 Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
 DimPlot(seurat_obj, label = TRUE)
