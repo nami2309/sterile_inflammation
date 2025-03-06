@@ -1,0 +1,189 @@
+---
+title: "05_multinichenet"
+format:
+  html:
+    theme: Default
+    toc: true
+    code-fold: true
+    self-contained: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = "05_multinichenet"
+NOW <- Sys.time()
+script_number <- "05_"
+project <- "SI"
+tag <- paste0(script_number,project)
+
+# Time chunks during knitting
+knitr::knit_hooks$set(timeit = function(before) {
+    if (before) {
+        print(paste("Start:", Sys.time()))
+        NOW <<- Sys.time()
+    } else {
+        print(paste("Stop:", Sys.time()))
+        print(Sys.time() - NOW)
+    }
+})
+
+knitr::opts_chunk$set(
+    autodep        = TRUE,
+    cache          = FALSE,
+    cache.path     = paste0("cache/", DOCNAME, "/"),
+    cache.comments = FALSE,
+    echo           = TRUE,
+    error          = FALSE,
+    fig.align      = "center",
+    fig.width      = 10,
+    fig.asp        = 0.6,
+    out.width      = "90%",
+    message        = FALSE,
+    warning        = FALSE,
+    timeit         = TRUE
+)
+```
+
+```{r setup, cache = FALSE}
+proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
+plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/05_multinichenet/"
+sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
+out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/05_multinichenet/"
+source(paste0(proj_dir,"/functions/universal.R"))
+
+# Define sample names
+sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
+
+sample_colors <- c(
+  "PVM_0h"  = "#EE9A49",  
+  "PVM_4h"  = "#CD853F", 
+  "PVM_7h" = "#8B5A2B",  
+  "PVEU_0h"  = "#7EC0EE",
+  "PVEU_4h" = "#6CA6CD", 
+  "PVEU_7h" = "#4A708B"
+)
+```
+
+# Introduction 
+
+Cell-cell communication can be inferred from transcriptomic data using 2 types of approaches:
+
+1. Permutation-Based Methods (e.g., CellPhoneDB and CellChat):
+
+Use a statistical “permutation” approach to rank ligand-receptor pairs based on how specific they are to certain cell types. Essentially, they resample data many times to see which interactions appear more frequently than expected by chance.
+Limitations:
+- Too Many Results: Return a very long list of interactions, making it hard to decide which ones are most important.
+- Expression ≠ Interaction: Just because both the ligand and receptor are detected at the RNA level doesn’t mean they physically interact.
+- Missing subtle signals: They might ignore interactions that are lowly expressed or not unique to one cell type, even if those interactions are biologically important.
+- Returns ligand-receptor pairs of which one or both members are differentially expressed (DE) between the conditions. But, differential RNA expression does not imply that an interaction is differentially active between conditions. 
+
+2. Downstream Signaling Integration (e.g., NicheNet)
+
+Not only considering which ligand-receptor pairs are expressed but also predicts the effect these interactions have on target genes in the receiving cells. It combines the expression data with signaling and gene regulatory networks to provide a more comprehensive picture.
+
+Instead of ranking solely by cell-type specificity, NicheNet evaluates “ligand activity” — that is, it looks at how strongly the predicted target genes of a ligand are enriched in the receiver cell. A high ligand activity suggests that the ligand and receptor are not just present but are functionally interacting.
+
+Additionally, it uses a prior knowledge network (built from known signaling pathways and gene regulatory interactions) to predict which ligand-receptor interactions are functionally “differentially active.” This means it identifies pairs that, based on the network, are likely causing the observed changes in downstream target genes in the receiver cells. This approach focuses on the actual biological impact of the interaction (its activity), rather than just changes in RNA levels. It prioritizes those interactions that are most likely to be driving the gene expression changes observed in the target cell type.
+
+Next comes the concept of MultiNicheNet. All of the methods above ignore presence of multi-sample data, and generate results after pooling all cells across samples. This approach is thus statistically inadequate because it ignores sample-to-sample variation, and results might be skewed towards sample-specific interactions of samples with more cells. This pooling procedure is also suboptimal from a biological perspective because it ignores that cell-cell communication occurs within one sample (for example, cells from PVM_0h cannot interact with cells from PVEU_4h or PVEU_7h). 
+
+In order to identify the interactions between different cell types (macs, PVM, mono, neuts) in different compartments (PVM, PVEU) at different time points (0h, 4h, 7h), we will use MultiNicheNet for differential cell-cell communication analysis from multi-sample multi-condition scRNA-seq data. Instead of just NicheNet (NN), we use MultiNicheNet (MNN) because we are not only interested in identifying key interactions within each compartment separately, but also comparing interactions across compartments and conditions. We are looking to find condition-specific changes in cell-cell communication as well.
+
+As an advantage, MNN can also correct for covariates.
+
+```{r install, cache=FALSE, eval=FALSE}
+# install.packages("devtools")
+devtools::install_github("saeyslab/nichenetr")
+devtools::install_github("saeyslab/multinichenetr")
+#if it keeps failing due to internet instability or GitHub APIs expiring or some other BS, try this:
+#in bash - clone the repo manually using following command
+#git clone https://github.com/saeyslab/multinichenetr.git
+#in R - install from local download (change path!!!)
+#devtools::install_local("./multinichenetr")
+```
+
+```{r libs, eval=TRUE}
+library(SingleCellExperiment)
+library(dplyr)
+library(ggplot2)
+library(nichenetr)
+library(multinichenetr)
+```
+
+MultiNicheNet builds upon the NicheNet framework and uses the same prior knowledge networks (ligand-receptor network and ligand-target matrix, currently v2 version). 
+
+NicheNet v2’s prior knowledge network is built as an integrated, multi-layer network that links extracellular ligands to intracellular targets through several interaction layers. It consists of three main components:
+
+1. Ligand–Receptor (LR) Network: Interactions between secreted ligands and their cell-surface receptors. This defines which ligands can potentially signal to a cell type based on receptor expression.
+2. Intracellular Signaling Network: Downstream signaling interactions (primarily protein–protein interactions and signaling cascades) that propagate the signal from activated receptors through intracellular mediators (kinases, signaling proteins) toward transcription factors.
+3. Gene Regulatory Network: Interactions between transcription factors (or other regulators) and target genes, capturing how signaling ultimately influences gene expression.
+
+These layers are aggregated into an integrated network spanning from ligands to downstream target genes. In other words, NicheNet creates a communication network that bridges the gap from a ligand binding its receptor, through the signaling intermediates, to the regulation of target genes
+
+The Nichenet v2 networks and matrices for both mouse and human can be downloaded from Zenodo. (https://doi.org/10.5281/zenodo.7074291). We will read these object in for mouse because our expression data is of mouse patients. 
+
+```{r load_nichenet_networks, eval=FALSE}
+organism = "mouse"
+options(timeout = 120)
+
+if(organism == "human"){
+  
+  lr_network_all = 
+    readRDS(url(
+      "https://zenodo.org/record/10229222/files/lr_network_human_allInfo_30112033.rds"
+      )) %>% 
+    mutate(
+      ligand = convert_alias_to_symbols(ligand, organism = organism), 
+      receptor = convert_alias_to_symbols(receptor, organism = organism))
+  
+  lr_network_all = lr_network_all  %>% 
+    mutate(ligand = make.names(ligand), receptor = make.names(receptor)) 
+  
+  lr_network = lr_network_all %>% 
+    distinct(ligand, receptor)
+  
+  ligand_target_matrix = readRDS(url(
+    "https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final.rds"
+    ))
+  
+  colnames(ligand_target_matrix) = colnames(ligand_target_matrix) %>% 
+    convert_alias_to_symbols(organism = organism) %>% make.names()
+  rownames(ligand_target_matrix) = rownames(ligand_target_matrix) %>% 
+    convert_alias_to_symbols(organism = organism) %>% make.names()
+  
+  lr_network = lr_network %>% filter(ligand %in% colnames(ligand_target_matrix))
+  ligand_target_matrix = ligand_target_matrix[, lr_network$ligand %>% unique()]
+  
+} else if(organism == "mouse"){
+  
+  lr_network_all = readRDS(url(
+    "https://zenodo.org/record/10229222/files/lr_network_mouse_allInfo_30112033.rds"
+    )) %>% 
+    mutate(
+      ligand = convert_alias_to_symbols(ligand, organism = organism), 
+      receptor = convert_alias_to_symbols(receptor, organism = organism))
+  
+  lr_network_all = lr_network_all  %>% 
+    mutate(ligand = make.names(ligand), receptor = make.names(receptor)) 
+  lr_network = lr_network_all %>% 
+    distinct(ligand, receptor)
+  
+  ligand_target_matrix = readRDS(url(
+    "https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final_mouse.rds"
+    ))
+  
+  colnames(ligand_target_matrix) = colnames(ligand_target_matrix) %>% 
+    convert_alias_to_symbols(organism = organism) %>% make.names()
+  rownames(ligand_target_matrix) = rownames(ligand_target_matrix) %>% 
+    convert_alias_to_symbols(organism = organism) %>% make.names()
+  
+  lr_network = lr_network %>% filter(ligand %in% colnames(ligand_target_matrix))
+  ligand_target_matrix = ligand_target_matrix[, lr_network$ligand %>% unique()]
+  
+}
+```
+
+```{r read_sce, eval=FALSE}
+sce = Seurat::as.SingleCellExperiment(seurat_obj, assay = "RNA")
+```

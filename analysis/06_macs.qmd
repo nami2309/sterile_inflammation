@@ -1,0 +1,108 @@
+---
+title: "Macrophages"
+format:
+  html:
+    theme: Default
+    toc: true
+    code-fold: true
+    self-contained: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+DOCNAME <- "06_macs"
+NOW <- Sys.time()
+script_number <- "06_"
+project <- "SI"
+tag <- paste0(script_number,project)
+
+knitr::knit_hooks$set(timeit = function(before) {
+  if (before) {
+    print(paste("Start:", Sys.time()))
+    NOW <<- Sys.time()
+  } else {
+    print(paste("Stop:", Sys.time()))
+    print(Sys.time() - NOW)
+  }
+})
+
+knitr::opts_chunk$set(
+  autodep        = TRUE,
+  cache          = FALSE,
+  cache.path     = paste0("cache/", DOCNAME, "/"),
+  cache.comments = FALSE,
+  echo           = TRUE,
+  error          = FALSE,
+  fig.align      = "center",
+  fig.width      = 7,
+  fig.height     = 5,
+  message        = FALSE,
+  warning        = FALSE,
+  timeit         = TRUE
+)
+
+# Define sample names
+sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
+
+sample_colors <- c(
+  "PVM_0h"  = "#EE9A49",
+  "PVM_4h"  = "#CD853F",
+  "PVM_7h" = "#8B5A2B",
+  "PVEU_0h"  = "#7EC0EE",
+  "PVEU_4h" = "#6CA6CD",
+  "PVEU_7h" = "#4A708B"
+)
+
+coarse_cell_cols <- adjustcolor(c('#2E8B57',
+                                  '#6cc8d8',
+                                  '#726da8',
+                                  '#c53b5c',
+                                  '#ffd166',
+                                  '#f7a1b5'
+), alpha.f = 0.7)
+
+celltype <- c('Macrophages', 'Neutrophils', "Mast cells",
+              'Endothelial cells', "B-cells", "T-cells") 
+
+# Use setNames() to correctly assign colors to organs
+celltype_cols <- setNames(coarse_cell_cols, celltype)
+
+```
+
+```{r libraries, cache=FALSE}
+# For Seurat object
+library(Seurat)
+
+# For alternative DE methods:
+library(MAST)
+
+# For parallelization
+library(BiocParallel)
+
+# For data wrangling, plotting, etc.
+library(tidyverse)  
+library(cowplot)
+library(dplyr)
+library(ggplot2)
+
+library(EnhancedVolcano)
+```
+
+```{r load, cache=FALSE}
+proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
+out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/06_macs/"
+plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/06_macs/"
+sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
+source(paste0(proj_dir,"/functions/universal.R"))
+load(paste0(sobj_dir,"03.2_SI_clean_sobj.Robj"))
+DefaultAssay(seurat_obj) <- "RNA"
+
+library(future)
+oopts <- options(future.globals.maxSize = 20.0 * 1e9) 
+on.exit(options(oopts))
+f <- future({ expr })  ## Launch a future with large objects
+```
+
+# Introduction
+

@@ -1,10 +1,11 @@
 ---
-title: "04_major_celltype_annot.qmd"
+title: "Major cell type annotations"
 format:
   html:
     theme: Default
     toc: true
     code-fold: true
+    self-contained: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -45,13 +46,28 @@ knitr::opts_chunk$set(
 sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
 
 sample_colors <- c(
-  "PVM_0h"  = "#EE9A49",  
-  "PVM_4h"  = "#CD853F", 
-  "PVM_7h" = "#8B5A2B",  
+  "PVM_0h"  = "#EE9A49",
+  "PVM_4h"  = "#CD853F",
+  "PVM_7h" = "#8B5A2B",
   "PVEU_0h"  = "#7EC0EE",
-  "PVEU_4h" = "#6CA6CD", 
+  "PVEU_4h" = "#6CA6CD",
   "PVEU_7h" = "#4A708B"
 )
+
+coarse_cell_cols <- adjustcolor(c('#2E8B57',
+                                  '#6cc8d8',
+                                  '#726da8',
+                                  '#c53b5c',
+                                  '#ffd166',
+                                  '#f7a1b5'
+), alpha.f = 0.7)
+
+celltype <- c('Macrophages', 'Neutrophils', "Mast cells",
+              'Endothelial cells', "B-cells", "T-cells") 
+
+# Use setNames() to correctly assign colors to organs
+celltype_cols <- setNames(coarse_cell_cols, celltype)
+
 ```
 
 ```{r libraries, cache=FALSE}
@@ -76,56 +92,51 @@ library(EnhancedVolcano)
 ```{r load, cache=FALSE}
 proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
 out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/04_major_celltype_annot/"
-plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/"
+plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/04_major_celltype_annot/"
 sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
-
 source(paste0(proj_dir,"/functions/universal.R"))
-source(paste0(proj_dir,"/functions/plotting.R"))
-source(paste0(proj_dir,"/functions/output.R"))
-
-load(paste0(sobj_dir,"03_SI_clean_sobj.Robj"))
-```
-
-```{r seu, cache=FALSE}
-seurat_obj <- seurat_sct
-rm(seurat_sct)
+load(paste0(sobj_dir,"03.2_SI_clean_sobj.Robj"))
+DefaultAssay(seurat_obj) <- "RNA"
 
 library(future)
 oopts <- options(future.globals.maxSize = 20.0 * 1e9) 
 on.exit(options(oopts))
 f <- future({ expr })  ## Launch a future with large objects
-
-# Identify the seurat_clusterss:
-seurat_clusterss <- sort(unique(Idents(seurat_obj)))
 ```
 
 # Introduction
 
-In this document, we will identify **marker genes** for the seurat_clusterss in our seurat object, and identify **major cell types**. 
+Based on the meeting on 03.03.25, we decided to go with SCT and res 0.2. In this document, we will identify **marker genes** for the seurat_clusterss in our seurat object, and identify **major cell types**. First we will identify marker genes.
 
-First we will identify marker genes.
+```{r umap_0.2, cache=FALSE, eval=TRUE}
+res <- 0.2
+Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
+DimPlot(seurat_obj, label = TRUE) + NoAxes() + NoLegend()
+DimPlot(seurat_obj, group.by = "orig.ident", cols = sample_colors) + NoAxes() 
+```
+
+```{r umap_split, cache=FALSE, eval=TRUE}
+DimPlot(seurat_obj, group.by = "orig.ident", split.by = "sample", cols = sample_colors) + NoAxes()
+```
+```{r umap_split2, cache=FALSE, eval=TRUE}
+DimPlot(seurat_obj, group.by = "orig.ident", split.by = "orig.ident", cols = sample_colors,
+        ncol = 3) 
+```
 
 There was some confusion regarding performing DE analysis after SCTransform. In this context, I found this (https://github.com/satijalab/seurat/issues/2180 and https://github.com/satijalab/seurat/issues/2115):
 
 "The scale.data (in SCTransform slot) is the pearson residuals that come out of regularized NB regression. The counts and data slot transforms these values back into integer values (stored in counts), and then performs a log-transformation (stored in data).
 
-SCTransform (by default) only stores pearson residuals (scale.data) for 3,000 variable features, to save memory. When possible, we try to perform operations directly on the Pearson residuals themselves. However, these values are not sparse (contain exclusively non-zero elements), so they take a lot of memory to store, and as a result we don't compute them for all genes by default. Unless you change the defaults in SCTransform, performing DE on the scale.data slot would only test differences in variable genes. We also find that pearson residuals are challenging to visualize/interpret on either Feature or Violin plots, and therefore find the data slot in the SCT assay quite useful for this.
+SCTransform (by default) only stores pearson residuals (scale.data) for 3,000 variable features, to save memory. When possible, we try to perform operations directly on the Pearson residuals themselves. However, these values are not sparse (contain exclusively non-zero elements), so they take a lot of memory to store, and as a result we don't compute them for all genes by default. Unless you change the defaults in SCTransform, performing DE on the scale.data slot would only test differences in variable genes. We also find that pearson residuals are challenging to visualize/interpret on either Feature or Violin plots.So performing DE on the scale.data slot of this assay means you are only testing 3,000 genes. Performing DE on the RNA assay will test all genes."
 
-So performing DE on the scale.data slot of this assay means you are only testing 3,000 genes. Performing DE on the RNA assay will test all genes."
+**Therefore, I have changed the default assay to RNA for marker gene analysis. This slot was already normalized and scaled for downstream analysis in the previous document (03.2_clustering).**
 
-**Therefore, I have changed the default assay to RNA, and normalized and scaled the data for downstream markers analysis in this document.**
+# Marker genes
 
-```{r seurat, cache=FALSE, eval=FALSE}
-DefaultAssay(seurat_obj) <- "RNA" 
-seurat_obj <- NormalizeData(seurat_obj)
-seurat_obj <- ScaleData(seurat_obj)
-save(seurat_obj, file = paste0(sobj_dir,tag,"_RNA_sobj.Robj"))
-```
-
-I will compare marker genes at res 0.2 and 0.4.
+I will find top 20 and top 100 marker genes at res 0.2. I also pseudobulked each cluster and found the top 100 highly expressed genes for it. All these csv files are in the marker folder here: 
+https://drive.google.com/drive/folders/1XsziJH3IJk4EJtlv9c2mQ86kQQ04mc0S
 
 ```{r degs, cache=FALSE, eval=FALSE}
-load(paste0(sobj_dir,tag,"_RNA_sobj.Robj"))
 res <- 0.2
 Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
 degs_0.2 <- FindAllMarkers(seurat_obj, only.pos = TRUE, 
@@ -140,6 +151,16 @@ top_genes <- degs_0.2 %>%
 
 # Save to CSV file
 write.csv(top_genes, paste0(out_data_dir,tag,"_markers_res0.2.csv"), 
+          row.names = FALSE)
+
+# Extract top 100 genes for each cluster
+top_genes <- degs_0.2 %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 100)
+
+# Save to CSV file
+write.csv(top_genes, paste0(out_data_dir,tag,"_top_100_markers_res0.2.csv"), 
           row.names = FALSE)
 
 res <- 0.4
@@ -157,90 +178,269 @@ top_genes <- degs_0.4 %>%
 # Save to CSV file
 write.csv(top_genes, paste0(out_data_dir,tag,"_markers_res0.4.csv"), 
           row.names = FALSE)
+
+# Calculate average expression per gene for each cluster using the normalized data
+avg_exp <- AverageExpression(seurat_obj, assays = "RNA", slot = "data")
+
+# Extract the RNA matrix (genes as rows and clusters as columns)
+avg_matrix <- avg_exp$RNA
+
+# Create an empty list to store the results for each cluster
+results_list <- list()
+
+# Loop over each cluster to sort genes by average expression and store the top 100 genes
+for (cluster in colnames(avg_matrix)) {
+  # Extract the average expression values for the current cluster
+  cluster_exp <- avg_matrix[, cluster]
+  # Sort the expression values in decreasing order
+  sorted_exp <- sort(cluster_exp, decreasing = TRUE)
+  # Get the top 100 genes only
+  top100 <- head(sorted_exp, 100)
+  
+  # Create a data frame with gene names, their average expression values, and cluster info
+  df <- data.frame(
+    Gene = names(top100),
+    AverageExpression = top100,
+    cluster = cluster,
+    row.names = NULL
+  )
+  
+  # Append the data frame to the list
+  results_list[[cluster]] <- df
+}
+
+# Combine the results from all clusters into one data frame
+all_results <- do.call(rbind, results_list)
+
+# Write the combined data frame to a CSV file
+write.csv(all_results, file = paste0(out_data_dir,tag,"_top100__highly_exp_genes_sct_0.2.csv", row.names = FALSE))
+```
+
+# Feature Plots
+
+In order to find the major cell types, next we looked at some canonical markers that were also present in the DEGs lists above.
+
+```{r feature_plots_explore, cache.lazy = FALSE, eval=FALSE, echo=FALSE}
+DefaultAssay(seurat_obj) <- "RNA"
+FeaturePlot(seurat_obj, features = c("Ly6g", "S100a8", "S100a9", "Retnlg")) #neuts 
+FeaturePlot(seurat_obj, features = c("Cxcr2", "Chil1", "Wfdc21", "Pglyrp1")) #neuts
+FeaturePlot(seurat_obj, features = c("Iglc1", "Iglc2", "Ighd", "Ighm")) #b cells canonical
+FeaturePlot(seurat_obj, features = c("Cd19", "Cd79a", "Cd79b", "Pax5")) #b cells cluster 2
+FeaturePlot(seurat_obj, features = c("Sell", "Ikzf3", "Btla", "Cxcr5")) #b cells cluster 11
+FeaturePlot(seurat_obj, features = c("Kit", "Fcgr1", "Mcpt4", "Cpa3")) #mast
+FeaturePlot(seurat_obj, features = c("Cd63", "Cpa3", "Cd200r3", "Cd203c")) #mast
+
+#pericyte investigation
+FeaturePlot(seurat_obj, features = c("Actb", "Cst3", "Malat1", "Anpep")) #pericytes #not exclusive
+FeaturePlot(seurat_obj, features = c("Acta2", "Pdgfrb", "Rgs5")) #pericytes #not exclusive
+FeaturePlot(seurat_obj, features = c("Anpep", "Des", "Cd146", "Ng2")) #pericytes #not exclusive
+FeaturePlot(seurat_obj, features = c("Anpep", "Des", "Cd146", "Ng2")) #pericytes #not exclusive
+
+#check technical 
+FeaturePlot(seurat_obj, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"))
+VlnPlot(seurat_obj, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), sort = TRUE)
+
+#they may be macs!!
+FeaturePlot(seurat_obj, features = c("Gata6", "Marco", "Arg1", "Nr4a1", "Lyz2"))
+
+#macs
+FeaturePlot(seurat_obj, features = c("Adgre1", "Cd163", "Fcgr1", "Trem1"))
+FeaturePlot(seurat_obj, features = c("Csf1r", "Cx3cr1", "Ccr2", "S100a4"))
+FeaturePlot(seurat_obj, features = c("Cd4", "Mmp9", "Folr2", "Timd4", "Lyve1", "Ccr2"))
+
+#T cells
+FeaturePlot(seurat_obj, features = c("Cd3e", "Cd4", "Tcf7", "Il2ra", "Cd3d", "Thy1"))
+FeaturePlot(seurat_obj, features = c("Cd3g", "Cd2", "Il2rb", "Cxcr3"))
+```
+
+```{r feature_plots, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+DefaultAssay(seurat_obj) <- "RNA"
+endothelial_genes <- c("Pecam1", "Cd34", "Ace", "Vcam1")
+neutrophil_genes1 <- c("Ly6g", "S100a9", "Retnlg", "Cxcr2", "S100a8", "Chil1") 
+ neutrophil_genes2 <- c("Wfdc21", "Pglyrp1", "Lmnb1", "Lcn2", "Fgr", "Csf3r") 
+neutrophil_genes3 <- c("Cebpe", "Camp", "Serpinb1a", "Fcnb", "Ltf", "Lyz2")
+bcell_genes1 <- c("Cd19", "Cd79a", "Cd79b", "Pax5", "Vpreb3", "Fcrla")
+bcell_genes2 <- c("Cd74", "Mzb1", "Iglc1", "Iglc2", "Iglc3", "Igkc") 
+bcell_genes3 <- c("Tnfrsf13c", "Il5ra", "Cd2", "Ighd", "Ighm", 
+                 "Itgb7")
+bcell_genes4 <- c("Sell", "Bcl2", "Cxcr5", "Plk", "Ebf", "Ikzf3")
+bcell_genes5 <- c("Btla")
+pericyte_genes1 <- c("Acta2", "Pdgfrb", "Anpep", "Rgs5", "Cspg4", "Des") 
+pericyte_genes2 <- c("Mcam")
+mast_genes <- c("Kit", "Fcgr1", "Mcpt4", "Cpa3", "Cd200r3", "Cd63")
+macrophage_genes <- c("Adgre1", "Cd163", "Fcgr1", "Tmem1", "Csf1r")
+tcell_genes1 <- c("Cd3e", "Cd8a", "Cd4", "Il2ra", "Il2rb", "Tcf7") 
+tcell_genes2 <- c("Cd3d", "Cd3g", "Cd2", "Cxcr3", "Thy1")
+
+p_endothelial <- make_feature_panel(seurat_obj, endothelial_genes, "Endothelial", ncol = 3)
+
+p_neutrophils1   <- make_feature_panel(seurat_obj, neutrophil_genes1, "Neutrophils", ncol = 3)
+p_neutrophils2   <- make_feature_panel(seurat_obj, neutrophil_genes2, "Neutrophils", ncol = 3)
+p_neutrophils3   <- make_feature_panel(seurat_obj, neutrophil_genes3, "Neutrophils", ncol = 3)
+
+p_bcells1        <- make_feature_panel(seurat_obj, bcell_genes1, "B Cells", ncol = 3)
+p_bcells2        <- make_feature_panel(seurat_obj, bcell_genes2, "B Cells", ncol = 3)
+p_bcells3        <- make_feature_panel(seurat_obj, bcell_genes3, "B Cells", ncol = 3)
+p_bcells4        <- make_feature_panel(seurat_obj, bcell_genes4, "B Cells", ncol = 3)
+p_bcells5        <- make_feature_panel(seurat_obj, bcell_genes5, "B Cells", ncol = 3)
+
+p_pericytes1     <- make_feature_panel(seurat_obj, pericyte_genes1, "Pericytes", ncol = 3)
+p_pericytes2     <- make_feature_panel(seurat_obj, pericyte_genes2, "Pericytes", ncol = 3)
+
+p_mast         <- make_feature_panel(seurat_obj, mast_genes, "Mast Cells", ncol = 3)
+
+p_macrophages   <- make_feature_panel(seurat_obj, macrophage_genes, "Macrophages", ncol = 3)
+
+p_tcells1        <- make_feature_panel(seurat_obj, tcell_genes1, "T Cells", ncol = 3)
+p_tcells2        <- make_feature_panel(seurat_obj, tcell_genes2, "T Cells", ncol = 3)
 ```
 
 ::: panel-tabset
 
-## Res 0.2 UMAP
+## Endothelial
 
-```{r umap_0.2, cache=FALSE, eval=TRUE}
-res <- 0.2
-Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
-DimPlot(seurat_obj, label = TRUE)
+```{r feature_plots_print1, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+print(p_endothelial)
 ```
 
-## Res 0.2 DEGs
+## Neuts
 
-```{r print_degs_0.2, cache=FALSE, eval=TRUE}
-library(DT)
-top_genes <- read.csv(paste0(out_data_dir,tag,"_markers_res0.2.csv"))
-
-datatable(
-  top_genes,
-  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
-  rownames = TRUE,
-)
+```{r feature_plots_print2, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+print(p_neutrophils1)
+print(p_neutrophils2)
+print(p_neutrophils3)
 ```
 
-## Res 0.4 UMAP
+## B cells
 
-```{r umap_0.4, cache=FALSE, eval=TRUE}
-res <- 0.4
-Idents(seurat_obj) <- paste0("SCT_snn_res.", res)
-DimPlot(seurat_obj, label = TRUE)
+```{r feature_plots_print13, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+print(p_bcells1)
+print(p_bcells2)
+print(p_bcells3)
+print(p_bcells4)
+print(p_bcells5)
 ```
 
-## Res 0.4 DEGs
+## Pericytes
 
-```{r print_degs_0.4, cache=FALSE, eval=TRUE}
-top_genes <- read.csv(paste0(out_data_dir,tag,"_markers_res0.4.csv"))
+```{r feature_plots_print4, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+print(p_pericytes1)
+print(p_pericytes2)
+```
 
-datatable(
-  top_genes,
-  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
-  rownames = TRUE,
-)
+## Mast
+
+```{r feature_plots_print5, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+print(p_mast)
+```
+
+## Macs
+
+```{r feature_plots_print6, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+print(p_macrophages)
+```
+
+## T cells
+
+```{r feature_plots_print7, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+print(p_tcells1)
+print(p_tcells2)
 ```
 
 :::
 
-```{r plots, cache.lazy = FALSE}
+```{r feature_plots_pdf, cache.lazy = FALSE, eval=FALSE, echo=FALSE}
+pdf(paste0(plots_dir,tag,"_markers_major_celltypes_plots.pdf"), width = 7, height = 5)
+print(p_endothelial)
+print(p_neutrophils1)
+print(p_neutrophils2)
+print(p_neutrophils3)
+print(p_bcells1)
+print(p_bcells2)
+print(p_bcells3)
+print(p_bcells4)
+print(p_bcells5)
+print(p_pericytes1)
+print(p_pericytes2)
+print(p_mast)
+print(p_macrophages)
+print(p_tcells1)
+print(p_tcells2)
+dev.off()
+```
+
+# Investigating pericytes
+
+Since I did not see any clusters showing pericyte markers, and pericytes were sorted before scRNA-seq, I decided to go back and see if I lost them during QC. This is before any quality filtering.
+
+```{r pericytes, cache.lazy = FALSE, eval=FALSE, echo=TRUE}
+load(paste0(proj_dir,"/srv/home/tkorenova/nami/02_SI_sobj_scale.Robj"))
+sobj <- RunPCA(sobj, npcs = 10)
+ElbowPlot(sobj, ndims=50)
+sobj <- RunUMAP(sobj, dims = 1:8)
+sobj <- FindNeighbors(sobj)
+sobj <- FindClusters(sobj, resolution = 0.2)
+save(sobj, file="/srv/home/tkorenova/nami/04_SI_pre_qc_sobj.Robj")
+
+p1 <- FeaturePlot(sobj, features = c("Actb", "Cst3", "Malat1", "Anpep")) #pericytes #not exclusive
+p2 <- FeaturePlot(sobj, features = c("Acta2", "Pdgfrb", "Rgs5")) #pericytes #not exclusive
+p3 <- FeaturePlot(sobj, features = c("Anpep", "Des", "Mcam", "Cspg4")) #pericytes #not exclusive
+
+save(p1, file="/srv/home/tkorenova/nami/04_SI_pericytes_plot_p1.Robj")
+save(p2, file="/srv/home/tkorenova/nami/04_SI_pericytes_plot_p2.Robj")
+save(p3, file="/srv/home/tkorenova/nami/04_SI_pericytes_plot_p3.Robj")
+```
+
+```{r pericytes2, cache.lazy = FALSE, eval=TRUE, echo=TRUE}
+load(paste0(proj_dir,"/output/processed/04_SI_pericytes_plot_p1.Robj"))
+load(paste0(proj_dir,"/output/processed/04_SI_pericytes_plot_p2.Robj"))
+load(paste0(proj_dir,"/output/processed/04_SI_pericytes_plot_p3.Robj"))
+p1
+p2
+p3
+```
+
+I did not find any clusters enriched in pericyte markers. It's likely we lost them during sequencing. 
+
+# Major cell type annotations
+
+```{r assign, cache.lazy = FALSE}
 seurat_obj@meta.data[,'celltype'] <- as.numeric(seurat_obj@active.ident)-1
-seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(5))] <- 'Monocytes'
-seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(0, 1, 8, 9))] <- 'Macrophages'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(0, 4, 5, 9, 1, 8, 13))] <- 'Macrophages'
 seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(3))] <- 'Neutrophils'
 seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(6,7))] <- 'Endothelial cells'
 seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(12))] <- 'Mast cells'
 seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(2, 11))] <- 'B-cells'
-seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(4, 10, 13))] <- 'Unknown'
-seurat_obj@meta.data$celltype[which(seurat_obj@meta.data$sample %in% c("PVM"))] <- 'PVM'
+seurat_obj@meta.data$celltype[which(seurat_obj@active.ident %in% c(10))] <- 'T-cells'
 
-
+p1 <- DimPlot(seurat_obj, repel = TRUE, label = FALSE, 
+        pt.size = 0.5, group.by = "celltype",
+        cols = celltype_cols) + 
+  NoAxes() + labs(title = NULL)
+p1
 
 DimPlot(seurat_obj, repel = TRUE, label = FALSE, 
-        pt.size = 0.5, group.by = "celltype") + 
+        pt.size = 0.5, group.by = "celltype", split.by = "orig.ident",
+        ncol = 3, cols = celltype_cols) + 
   NoAxes() + labs(title = NULL)
 
-DimPlot(seurat_obj, repel = TRUE, label = FALSE, 
-        pt.size = 0.5, group.by = "celltype", split.by = "orig.ident") + 
-  NoAxes() + labs(title = NULL)
+
 
 features_celltypes <- c(
-  "Ccr2", "Irf5", "S100a4", "Adgre1", 
-  "Csf1r", "Folr2", 
-  "Mmp9", "Lcn2", "Retnlg", "S100a8", 
-  "Pecam1", 
-  "Cldn5", "Emcn", "Sox17", 
-  "Kit", "Cpa3", "Tpsb2",
-  "Des", "Acta2", "Pdgfrb", 
-  "Cd19", "Blk", "Cd22"
+  "Cd19", "Cd79a", "Iglc1", "Pax5",
+  "Pecam1", "Cd34", "Ace", "Vcam1",
+  "Adgre1", "Cd163", "Fcgr1", "Csf1r", 
+  "Folr2", "Ccr2", "Irf5", "S100a4", 
+  "Kit", "Mcpt4", "Cpa3", "Cd63",
+  "Ly6g", "Cxcr2", "Retnlg", "S100a8", 
+  "Cd3e", "Il2rb", "Cd3d", "Thy1",
+  "Des", "Acta2", "Pdgfrb"
 )
 
-
 # Generate DotPlot 
-DotPlot(seurat_obj, features = features_celltypes, group.by = "seurat_clusters",
-        col.min = -1,
-        col.max = 5,
+DotPlot(seurat_obj, features = features_celltypes, group.by = "celltype",
+        col.min = 0,
+        col.max = 2,
         dot.scale = 5) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1.0, size = 12),
         axis.text.y = element_text(angle = 0, hjust = 1.0, size = 15)) +
@@ -251,3 +451,5 @@ DoHeatmap(seurat_obj, features = features_celltypes,
           group.colors = celltype_cols,
           size = 3) 
 ```
+
+

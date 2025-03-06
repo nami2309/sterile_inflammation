@@ -152,7 +152,7 @@ extract_saved_files <- function(script_path) {
 # 7 filtered_sobj     file=/home/nsingh/sterile_inflammation/output/processed/02_SI_sobj_df.Robj
 # 8  sobj_post_df                                file=./output/processed/02_SI_sobj_post_df.Robj
 
-#Function to calculate how many PCs to use for UMAP
+#Function to calculate how many PCs to use for UMAP-----------
 select_dims <- function(object, reduction) {
   # Approach 1:
   # The point where individual principal components only contribute 5% of standard deviation
@@ -188,13 +188,13 @@ select_dims <- function(object, reduction) {
   return(1:min(co1, co2, co3))
 }
 
+# Define the function to add mini arrow axes-------------
 # function to add_mini_axis() that you can use in conjunction with your DimPlot (or any ggplot object) to overlay mini arrow axes.
 # Load necessary libraries (if not already loaded)
 library(ggplot2)
 library(cowplot)
 library(grid)
 
-# Define the function to add mini arrow axes
 add_mini_axis <- function(p,
                           x = 0.01, y = 0.01,
                           width = 1, height = 1,
@@ -243,3 +243,44 @@ add_mini_axis <- function(p,
 # Now add the mini axes:
 # p_final <- add_mini_axis(p4)
 # print(p_final)
+
+#Function to add title to featureplots---------------
+library(Seurat)
+library(cowplot)
+
+make_feature_panel <- function(seurat_obj, gene_list, panel_title, ncol = 2) {
+  # Create individual FeaturePlots for each gene without combining them
+  p_list <- FeaturePlot(seurat_obj, features = gene_list, combine = FALSE,
+                        label.size = 1)
+
+  #Remove axes
+  p_list <- lapply(p_list, function(p) {
+    p + theme(axis.line = element_blank(),
+              axis.text = element_blank(),
+              axis.ticks = element_blank(),
+              axis.title = element_blank())
+  })
+
+  # Arrange the individual plots into a grid with the specified number of columns
+  grid <- plot_grid(plotlist = p_list, ncol = ncol) + theme_void()
+
+  # Add an overall panel title above the grid
+  final_plot <- ggdraw() +
+    draw_label(panel_title, fontface = "bold", size = 16, x = 0.5, y = 0.98, hjust = 0.5) +
+    draw_plot(grid, y = 0, height = 0.95)
+
+  return(final_plot)
+}
+
+# Example usage:
+# # Specify your gene list and panel title
+# endothelial_genes <- c("Pecam1", "Cd34", "Ace", "Vcam1")
+# panel_title <- "Endothelial Cells"
+#
+# # Create the combined feature plot panel
+# p_endothelial <- make_feature_panel(seurat_obj, endothelial_genes, panel_title, ncol = 2)
+#
+# # Display the plot
+# print(p_endothelial)
+
+

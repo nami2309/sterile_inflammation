@@ -11,10 +11,6 @@ editor_options:
 ---
 
 ```{r knitr, include = FALSE}
-#remember to add the following chunk to the YML header when rendering this file if you want to send it to someone, so that the plots are embedded in the file.
-    # embed-resources: true
-    # self-contained: true
-    
 DOCNAME = "03_clustering"
 NOW <- Sys.time()
 script_number <- "03_"
@@ -683,15 +679,6 @@ out <- knit_child(text = unlist(src_list), options = list(cache = FALSE))
 # Selection
 
 Looking at the plots, it seems that SCTransform better captures the biological variability between different samples/time_points. To be conservative, we will keep resolution at 0.2 which gives us 13 clusters.
-
-```{r select-res}
-res <- 0.2
-Idents(seurat_sct) <- paste0("SCT_snn_res.", res)
-seurat_sct$seurat_clusters <- seurat_sct[[paste0("SCT_snn_res.", res)]]
-
-```{r save obj, eval=TRUE, echo=FALSE, cache=FALSE}
-save(seurat_sct, file = paste0(sobj_dir,tag,"_clean_sobj.Robj"))
-```
 
 # Validation
 

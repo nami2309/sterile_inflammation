@@ -1,6 +1,7 @@
 project:
   type: website
   output-dir: docs/
+freeze: true
 website:
   title: "Sterile inflammation"
   navbar:
@@ -16,9 +17,9 @@ website:
           - text: "Clustering"
             href: analysis/03_clustering.qmd
           - text: "Clustering 2.0"
-            href: analysis/03_clustering_2.0.qmd
-  #       - text: "Marker genes"
-  #         href: 04-marker-genes.html
+            href: analysis/03.2_clustering.qmd
+          - text: "Major cell types"
+            href: 04_major_celltype_annot.qmd
   #       - text: "PAGA"
   #         href: 05-paga.html
   #       - text: "Cell velocity"
@@ -36,8 +37,8 @@ website:
   #     href: https://github.com/lazappi/phd-thesis-analysiswebsite
 format:
   html:
-    embed-resources: false  # or true if you want them in a single HTML file
-    self-contained: false   # ensures separate resource folders
+    embed-resources: true  # or true if you want them in a single HTML file
+    self-contained: true   # ensures separate resource folders
     # This is the key:
     resource-paths: ["analysis"]
     theme: Default

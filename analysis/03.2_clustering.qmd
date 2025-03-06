@@ -1,0 +1,710 @@
+---
+title: "03.2_clustering"
+format:
+  html:
+    theme: Default
+    toc: true
+    code-fold: true
+    self-contained: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = "03.2_clustering"
+NOW <- Sys.time()
+script_number <- "03.2_"
+project <- "SI"
+tag <- paste0(script_number,project)
+
+# Time chunks during knitting
+knitr::knit_hooks$set(timeit = function(before) {
+    if (before) {
+        print(paste("Start:", Sys.time()))
+        NOW <<- Sys.time()
+    } else {
+        print(paste("Stop:", Sys.time()))
+        print(Sys.time() - NOW)
+    }
+})
+
+knitr::opts_chunk$set(
+    autodep        = TRUE,
+    cache          = FALSE,
+    cache.path     = paste0("cache/", DOCNAME, "/"),
+    cache.comments = FALSE,
+    echo           = TRUE,
+    error          = FALSE,
+    fig.align      = "center",
+    fig.width      = 10,
+    fig.asp        = 0.6,
+    out.width      = "90%",
+    message        = FALSE,
+    warning        = FALSE,
+    timeit         = TRUE
+)
+```
+
+```{r libaries, cache = FALSE}
+# scRNA-seq
+library("SingleCellExperiment")
+library("Seurat")
+
+# Clustering trees
+library("clustree")
+
+# Plotting
+library("viridis")
+library("ggforce")
+library("cowplot")
+library(ggrepel)
+library(patchwork)
+
+# Presentation
+library("knitr")
+
+# Tidyverse
+library("tidyverse")
+```
+
+```{r source, cache = FALSE}
+proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
+plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/03.2_clustering/"
+sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
+out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/03.2_clustering/"
+
+source(paste0(proj_dir,"/functions/universal.R"))
+```
+
+```{r setup, message=FALSE, warning=FALSE, cache=FALSE, include=TRUE}
+# Define sample names
+sample_names <- c("PVM_0h", "PVEU_0h", "PVM_4h", "PVEU_4h", "PVM_7h", "PVEU_7h")
+
+sample_colors <- c(
+  "PVM_0h"  = "#EE9A49",  
+  "PVM_4h"  = "#CD853F", 
+  "PVM_7h" = "#8B5A2B",  
+  "PVEU_0h"  = "#7EC0EE",
+  "PVEU_4h" = "#6CA6CD", 
+  "PVEU_7h" = "#4A708B"
+)
+```
+
+# Introduction
+
+After talking to Shweta and Rohit once I showed them the results from the last script (03_clustering), it was difficult to say which methods performs clustering better. To get a better idea of what each cluster is at a cell type level, I did a rough cell type annotation ans subsetted the PVM compartment for both methods. In order to streamline things, I kept the resolution for both SCTransform and Seurat VST full objects as 0.2.
+
+```{r load_seurat}
+load(file=paste0(proj_dir,"output/processed/03_SI_seurat_sct.Robj"))
+load(paste0(proj_dir,"output/processed/03_SI_seurat_vst.Robj"))
+seurat_vst <- seurat
+rm(seurat)
+
+res <- 0.2
+Idents(seurat_sct) <- paste0("SCT_snn_res.", res)
+seurat_sct$seurat_clusters <- seurat_sct[[paste0("SCT_snn_res.", res)]]
+Idents(seurat_vst) <- paste0("RNA_snn_res.", res)
+seurat_vst$seurat_clusters <- seurat_vst[[paste0("RNA_snn_res.", res)]]
+```
+
+# Compare UMAPs at 0.2 res
+
+The following plots show what the UMAPs looks like split by seurat clusters and by sample_timepoint.
+
+```{r umap_sct}
+p1 <- DimPlot(seurat_sct, label = TRUE) + NoAxes() + NoLegend() 
+p2 <- DimPlot(seurat_sct, group.by = "orig.ident", 
+              cols = sample_colors) +
+  ggtitle("SCT") + NoAxes() 
+p <- add_mini_axis(p1) + add_mini_axis(p2)
+p 
+
+p3 <- DimPlot(seurat_vst, label = TRUE) + NoAxes() + NoLegend()
+p4 <- DimPlot(seurat_vst, group.by = "orig.ident", cols = sample_colors) +
+  ggtitle("VST") + NoAxes()
+p <- add_mini_axis(p3) + add_mini_axis(p4)
+p
+```
+
+# Compare marker genes at 0.2 res
+
+The marker genes for both objects are attached.
+
+Side note about finding markers and any downstream analysis using SCTransform:
+
+There was some confusion regarding performing DE analysis after SCTransform. In this context, I found this (https://github.com/satijalab/seurat/issues/2180 and https://github.com/satijalab/seurat/issues/2115):
+
+"The scale.data (in SCTransform slot) is the pearson residuals that come out of regularized NB regression. The counts and data slot transforms these values back into integer values (stored in counts), and then performs a log-transformation (stored in data).
+
+SCTransform (by default) only stores pearson residuals (scale.data) for 3,000 variable features, to save memory. When possible, we try to perform operations directly on the Pearson residuals themselves. However, these values are not sparse (contain exclusively non-zero elements), so they take a lot of memory to store, and as a result we don't compute them for all genes by default. Unless you change the defaults in SCTransform, performing DE on the scale.data slot would only test differences in variable genes. We also find that pearson residuals are challenging to visualize/interpret on either Feature or Violin plots, and therefore find the data slot in the SCT assay quite useful for this.
+
+So performing DE on the scale.data slot of this assay means you are only testing 3,000 genes. Performing DE on the RNA assay will test all genes."
+
+**Therefore, I have changed the default assay to RNA, and normalized and scaled the data for markers analysis of the SCTransform object in this document.**
+
+```{r find_markers, eval=FALSE, echo=TRUE}
+DefaultAssay(seurat_sct) <- "RNA" 
+seurat_sct <- NormalizeData(seurat_sct)
+seurat_sct <- ScaleData(seurat_sct)
+degs_sct <- FindAllMarkers(seurat_sct, only.pos = TRUE, 
+                           assay = "RNA",
+                           min.pct = 0.25, logfc.threshold = 0.1)
+
+# Extract top 20 genes for each cluster
+top_genes <- degs_sct %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 20)
+
+# Save to CSV file
+write.csv(top_genes, paste0(out_data_dir,tag,"_markers_sct_res0.2.csv"), 
+          row.names = FALSE)
+
+#VST
+degs_vst <- FindAllMarkers(seurat_vst, only.pos = TRUE, 
+                           assay = "RNA",
+                           min.pct = 0.25, logfc.threshold = 0.1)
+
+# Extract top 20 genes for each cluster
+top_genes <- degs_vst %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 20)
+
+# Save to CSV file
+write.csv(top_genes, paste0(out_data_dir,tag,"_markers_vst_res0.2.csv"), 
+          row.names = FALSE)
+save(seurat_sct, file="./output/processed/03.2_SI_seurat_sct.Robj")
+```
+
+## SCT
+
+```{r print_degs_0.2_sct, cache=FALSE, eval=TRUE}
+library(DT)
+top_genes_sct <- read.csv(paste0(out_data_dir,tag,"_markers_sct_res0.2.csv"))
+
+datatable(
+  top_genes_sct,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE
+)
+```
+
+## VST
+
+```{r print_degs_0.2_vst, cache=FALSE, eval=TRUE}
+ top_genes_vst <- read.csv(paste0(out_data_dir,tag,"_markers_vst_res0.2.csv"))
+
+datatable(
+  top_genes_vst,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE
+)
+```
+
+The marker gene lists are also attached in the shared Google folder as csv files.
+
+# Rough cell type annotations
+
+Next I did some rough cell type annotation based on markers we identified in December, 2024.
+
+## SCT
+
+```{r celltype_plots_sct, cache.lazy = FALSE}
+load(file=paste0(proj_dir,"output/processed/03.2_SI_seurat_sct.Robj"))
+features_celltypes <- c(
+  "Ccr2", "Irf5", "S100a4", "Adgre1", 
+  "Csf1r", "Folr2", 
+  "Mmp9", "Lcn2", "Retnlg", "S100a8", 
+  "Pecam1", 
+  "Cldn5", "Emcn", "Sox17", 
+  "Kit", "Cpa3", "Tpsb2",
+  "Des", "Acta2", "Pdgfrb", 
+  "Cd19", "Blk", "Cd22"
+)
+
+DefaultAssay(seurat_sct) <- "RNA" 
+p1 <- DotPlot(seurat_sct, features = features_celltypes, group.by = "seurat_clusters",
+        col.min = -1,
+        col.max = 2,
+        dot.scale = 5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1.0, size = 12),
+        axis.text.y = element_text(angle = 0, hjust = 1.0, size = 15)) +
+  labs(x = NULL, y = NULL) + ggtitle("SCT")
+
+seurat_sct@meta.data[,'celltype'] <- as.numeric(seurat_sct@active.ident)-1
+seurat_sct@meta.data$celltype[which(seurat_sct@active.ident %in% c(5))] <- 'Monocytes'
+seurat_sct@meta.data$celltype[which(seurat_sct@active.ident %in% c(0, 1, 8, 9))] <- 'Macrophages'
+seurat_sct@meta.data$celltype[which(seurat_sct@active.ident %in% c(3))] <- 'Neutrophils'
+seurat_sct@meta.data$celltype[which(seurat_sct@active.ident %in% c(6,7))] <- 'Endothelial cells'
+seurat_sct@meta.data$celltype[which(seurat_sct@active.ident %in% c(12))] <- 'Mast cells'
+seurat_sct@meta.data$celltype[which(seurat_sct@active.ident %in% c(2, 11))] <- 'B-cells'
+seurat_sct@meta.data$celltype[which(seurat_sct@active.ident %in% c(13, 10, 4))] <- 'Unknown'
+seurat_sct@meta.data$celltype[which(seurat_sct@meta.data$sample %in% c("PVM"))] <- 'PVM'
+
+p2 <- DimPlot(seurat_sct, repel = TRUE, label = FALSE, 
+        pt.size = 0.5, group.by = "celltype") + 
+  NoAxes() + labs(title = NULL)
+p1 + p2
+p3 <- DimPlot(seurat_sct, repel = TRUE, label = FALSE, 
+        pt.size = 0.5, group.by = "celltype", split.by = "orig.ident") + 
+  NoAxes() + labs(title = NULL)
+p3
+
+p4 <- DotPlot(seurat_vst, features = features_celltypes, group.by = "seurat_clusters",
+        col.min = -1,
+        col.max = 2,
+        dot.scale = 5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1.0, size = 12),
+        axis.text.y = element_text(angle = 0, hjust = 1.0, size = 15)) +
+  labs(x = NULL, y = NULL) + ggtitle("VST")
+```
+
+## VST
+
+```{r celltype_plots_vst, cache.lazy = FALSE}
+seurat_vst@meta.data[,'celltype'] <- as.numeric(seurat_vst@active.ident)-1
+seurat_vst@meta.data$celltype[which(seurat_vst@active.ident %in% c(3))] <- 'Monocytes'
+seurat_vst@meta.data$celltype[which(seurat_vst@active.ident %in% c(0, 1, 8))] <- 'Macrophages'
+seurat_vst@meta.data$celltype[which(seurat_vst@active.ident %in% c(4))] <- 'Neutrophils'
+seurat_vst@meta.data$celltype[which(seurat_vst@active.ident %in% c(6,7))] <- 'Endothelial cells'
+seurat_vst@meta.data$celltype[which(seurat_vst@active.ident %in% c(10))] <- 'Mast cells'
+seurat_vst@meta.data$celltype[which(seurat_vst@active.ident %in% c(2))] <- 'B-cells'
+seurat_vst@meta.data$celltype[which(seurat_vst@active.ident %in% c(9, 5, 12, 11))] <- 'Unknown'
+seurat_vst@meta.data$celltype[which(seurat_vst@meta.data$sample %in% c("PVM"))] <- 'PVM'
+
+p5 <- DimPlot(seurat_vst, repel = TRUE, label = FALSE, 
+        pt.size = 0.5, group.by = "celltype") + 
+  NoAxes() + labs(title = NULL)
+p4 + p5
+p6 <- DimPlot(seurat_vst, repel = TRUE, label = FALSE, 
+        pt.size = 0.5, group.by = "celltype", split.by = "orig.ident") + 
+  NoAxes() + labs(title = NULL)
+p6
+```
+
+# Subset PVM
+
+Next I subsetted the PVM compartment from both full objects.
+
+## SCT
+
+```{r subset_pvm_sct, eval=FALSE, echo=TRUE, cache.lazy = FALSE}
+library(future)
+oopts <- options(future.globals.maxSize = 1.0 * 1e9)  ## 1.0 GB
+on.exit(options(oopts))
+f <- future({ expr })
+
+pvm_sct <- subset(seurat_sct, subset = sample == "PVM")
+pvm_sct <- SCTransform(pvm_sct)
+pvm_sct <- RunPCA(pvm_sct, npcs = 50)
+
+ElbowPlot(pvm_sct)
+selected_dims <- select_dims(pvm_sct, "pca")
+
+set.seed(123)
+pvm_sct <- RunUMAP(pvm_sct, dims = 1:21)
+pvm_sct <- FindNeighbors(pvm_sct)
+pvm_sct <- FindClusters(pvm_sct, resolution = 0.2)
+save(pvm_sct, file=paste0(sobj_dir,tag,"_pvm_sct.Robj"))
+```
+
+```{r plot_pvm_sct, cache.lazy = FALSE}
+load(paste0(sobj_dir,tag,"_pvm_sct.Robj"))
+p1 <- DimPlot(pvm_sct, group.by = "orig.ident", cols = sample_colors) + ggtitle("SCT")
+p2 <- DimPlot(pvm_sct)
+p1 + p2
+DimPlot(pvm_sct, split.by = "orig.ident")
+```
+
+## VST
+
+```{r subset_pvm_vst, eval=FALSE, echo=TRUE, cache.lazy = FALSE}
+library(future)
+oopts <- options(future.globals.maxSize = 1.0 * 1e9)  ## 1.0 GB
+on.exit(options(oopts))
+f <- future({ expr })
+
+pvm_vst <- subset(seurat_vst, subset = sample == "PVM")
+pvm_vst <- NormalizeData(pvm_vst, npcs = 50)
+pvm_vst <- ScaleData(pvm_vst, npcs = 50)
+pvm_vst <- RunPCA(pvm_vst, npcs = 50)
+
+ElbowPlot(pvm_vst)
+selected_dims <- select_dims(pvm_vst, "pca")
+
+set.seed(123)
+pvm_vst <- RunUMAP(pvm_vst, dims = 1:16)
+pvm_vst <- FindNeighbors(pvm_vst)
+pvm_vst <- FindClusters(pvm_vst, resolution = 0.2)
+save(pvm_vst, file=paste0(sobj_dir,tag,"_pvm_vst.Robj"))
+```
+
+```{r plot_pvm_vst, cache.lazy = FALSE}
+load(paste0(sobj_dir,tag,"_pvm_vst.Robj"))
+p1 <- DimPlot(pvm_vst, group.by = "orig.ident", cols = sample_colors) + ggtitle("SCT")
+p2 <- DimPlot(pvm_vst)
+p1 + p2
+DimPlot(pvm_vst, split.by = "orig.ident")
+```
+
+#PVM Markers
+
+Next I foudn marker genes for both subsetted PVM objects. Once again, for the SCTransform object, the assay was first changed to RNA.
+
+```{r find_markers_pvm, eval=FALSE, echo=TRUE}
+DefaultAssay(pvm_sct) <- "RNA" 
+pvm_sct <- NormalizeData(pvm_sct)
+pvm_sct <- ScaleData(pvm_sct)
+degs_pvm_sct <- FindAllMarkers(pvm_sct, only.pos = TRUE, 
+                           assay = "RNA",
+                           min.pct = 0.25, logfc.threshold = 0.1)
+
+# Extract top 20 genes for each cluster
+top_genes <- degs_pvm_sct %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 20)
+
+# Save to CSV file
+write.csv(top_genes, paste0(out_data_dir,tag,"_pvm_markers_sct_res0.2.csv"), 
+          row.names = FALSE)
+
+#VST
+degs_pvm_vst <- FindAllMarkers(pvm_vst, only.pos = TRUE, 
+                           assay = "RNA",
+                           min.pct = 0.25, logfc.threshold = 0.1)
+
+# Extract top 20 genes for each cluster
+top_genes <- degs_pvm_vst %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC)) %>%
+  slice_head(n = 20)
+
+# Save to CSV file
+write.csv(top_genes, paste0(out_data_dir,tag,"_pvm_markers_vst_res0.2.csv"), 
+          row.names = FALSE)
+```
+
+## SCT
+
+```{r print_degs_0.2_pvm_sct, cache=FALSE, eval=TRUE}
+library(DT)
+top_genes_sct <- read.csv(paste0(out_data_dir,tag,"_pvm_markers_sct_res0.2.csv"))
+
+datatable(
+  top_genes_sct,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE
+)
+```
+
+## VST
+
+```{r print_degs_0.2_pvm_vst, cache=FALSE, eval=TRUE}
+top_genes_vst <- read.csv(paste0(out_data_dir,tag,"_pvm_markers_vst_res0.2.csv"))
+
+datatable(
+  top_genes_vst,
+  options = list(pageLength = 10, lengthMenu = c(10, 25, 50, 100)),
+  rownames = TRUE
+)
+```
+
+These files are also attached in the shared Google folder.
+
+# Selection
+
+In the meeting on 03.03.25, we decided to go with SCT since it seems that SCTransform better captures the biological variability between different samples/time_points. To be conservative, we will keep resolution at 0.2 which gives us 13 clusters.
+
+```{r select-res, eval=TRUE, echo=FALSE, cache=FALSE}
+res <- 0.2
+Idents(seurat_sct) <- paste0("SCT_snn_res.", res)
+seurat_sct$seurat_clusters <- seurat_sct[[paste0("SCT_snn_res.", res)]]
+```
+
+```{r save obj, eval=FALSE, echo=FALSE, cache=FALSE}
+DefaultAssay(seurat_sct) <- "RNA"
+save(seurat_sct, file = paste0(sobj_dir,"03.2_SI_clean_sobj.Robj"))
+```
+
+# Validation
+
+To validate the clusters we will repeat some of our quality control plots separated by cluster. At this stage we just want to check that none of the clusters are obviously the result of technical factors.
+
+::: panel-tabset
+
+## Cluster
+
+::: panel-tabset
+
+### Count
+
+```{r cluster-count}
+ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = seurat_clusters)) +
+  geom_bar() +
+  labs(title = "Cluster Counts", x = "Cluster", y = "Count") +
+  theme_minimal()
+```
+
+### PCA
+
+```{r cluster-pca}
+DimPlot(seurat_sct, reduction = "pca", group.by = "seurat_clusters") +
+  labs(title = "PCA by Cluster") +
+  theme_minimal()
+```
+
+### UMAP
+
+```{r cluster-umap}
+DimPlot(seurat_sct, reduction = "umap", group.by = "seurat_clusters") +
+  labs(title = "PCA by Cluster") +
+  theme_minimal()
+```
+
+:::
+
+## Sample
+
+::: panel-tabset
+
+### Count
+
+```{r sample-count}
+ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = orig.ident)) +
+  scale_fill_manual(values = sample_colors) +
+  geom_bar() +
+  labs(title = "Sample counts", x = "Cluster", y = "Count") +
+  theme_minimal()
+```
+
+### Proportion
+
+```{r sample-prop}
+library(dplyr)
+plot_data <- seurat_sct@meta.data %>%
+  count(seurat_clusters, orig.ident) %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+ggplot(plot_data, aes(x = seurat_clusters, y = prop, fill = orig.ident)) +
+  scale_fill_manual(values = sample_colors) +
+  geom_col() +
+  labs(title = "Proportions by sample", x = "Cluster", y = "Proportion") +
+  theme_minimal()
+```
+
+### PCA
+
+```{r sample-pca}
+DimPlot(seurat_sct, reduction = "pca", group.by = "orig.ident") +
+  scale_color_manual(values = sample_colors) +
+  labs(title = "PCA by sample") +
+  theme_minimal()
+```
+
+### umap
+
+```{r sample-umap}
+DimPlot(seurat_sct, reduction = "umap", group.by = "orig.ident") +
+  scale_color_manual(values = sample_colors) +
+  labs(title = "umap by sample") +
+  theme_minimal()
+```
+
+:::
+
+## Selection method
+
+::: panel-tabset
+
+### Count
+
+```{r sel-count}
+ggplot(seurat_sct@meta.data, aes(x = seurat_clusters, fill = SelMethod)) +
+  geom_bar() +
+  labs(title = "", x = "Cluster", y = "Count") +
+  theme_minimal()
+```
+
+### Proportion
+
+```{r sel-prop}
+library(dplyr)
+plot_data <- seurat_sct@meta.data %>%
+  count(seurat_clusters, SelMethod) %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+ggplot(plot_data, aes(x = seurat_clusters, y = prop, fill = SelMethod)) +
+  geom_col() +
+  labs(title = "", x = "Cluster", y = "Proportion") +
+  theme_minimal()
+```
+
+### PCA
+
+```{r sel-pca}
+DimPlot(seurat_sct, reduction = "pca", group.by = "SelMethod") +
+  labs(title = "") +
+  theme_minimal()
+```
+
+### umap
+
+```{r sel-umap}
+DimPlot(seurat_sct, reduction = "umap", group.by = "SelMethod") +
+  labs(title = "") +
+  theme_minimal()
+```
+
+:::
+
+## nCount_SCT
+
+::: panel-tabset
+
+### Distribution
+
+```{r count-count}
+library(patchwork)
+p1 <- VlnPlot(seurat_sct, features = "nCount_SCT") + NoLegend()
+p2 <- FeaturePlot(seurat_sct, features = "nCount_SCT", label = TRUE) + NoLegend()
+p1 + p2 + plot_layout(ncol = 2)
+```
+
+:::
+
+## nFeature_SCT
+
+::: panel-tabset
+
+### Distribution
+
+```{r feature-count}
+p1 <- VlnPlot(seurat_sct, features = "nFeature_SCT") + NoLegend()
+p2 <- FeaturePlot(seurat_sct, features = "nFeature_SCT", label = TRUE) + NoLegend()
+p1 + p2 + plot_layout(ncol = 2)
+```
+
+:::
+
+## Percent mito
+
+::: panel-tabset
+
+### Distribution
+
+```{r mt-count}
+p1 <- VlnPlot(seurat_sct, features = "percent.mt") + NoLegend()
+p2 <- FeaturePlot(seurat_sct, features = "percent.mt", label = TRUE) + NoLegend()
+p1 + p2 + plot_layout(ncol = 2)
+```
+
+:::
+
+## Log 10 genes per UMI
+
+::: panel-tabset
+
+### Distribution
+
+```{r genes-count}
+p1 <- VlnPlot(seurat_sct, features = "log10genes_per_UMI") + NoLegend()
+p2 <- FeaturePlot(seurat_sct, features = "log10genes_per_UMI", label = TRUE) + NoLegend()
+p1 + p2 + plot_layout(ncol = 2)
+```
+
+:::
+
+:::
+
+# Summary
+
+After clustering, we have a dataset normalized and scaled using SCTransform, and identified 13 clusters.
+
+## Parameters
+
+This table describes parameters used and set in this document.
+
+```{r params, eval=TRUE}
+library(DT)
+res <- 0.2
+resolutions <- seq(0, 1, 0.1)
+
+params <- list(
+  list(
+    Parameter = "Number of genes selected by the VST method",
+    Value = "3000"
+  ),
+  list(
+    Parameter = "Number of genes selected by the SCT method",
+    Value = "3000"
+  ),
+  list(
+    Parameter = "Number of principal components for VST object clustering",
+    Value = 18
+  ),
+  list(
+    Parameter = "Number of principal components for SCT object clustering",
+    Value = 13
+  ),
+  list(
+    Parameter = "Number of neighbours for nearest neighbor graph",
+    Value = 30
+  ),
+  list(
+    Parameter = "Range of possible clustering resolutions",
+    Value = "0-0.9"
+  ),
+  list(
+    Parameter = "Method chosen for downstream analysis",
+    Value = "SCTransform"
+  ),
+  list(
+    Parameter = "Selected resolution parameter for clustering",
+    Value = res
+  ),
+  list(
+    Parameter = "Number of clusters produced by selected resolution",
+    Value = "13"
+  )
+)
+
+# Convert each sublist to a data frame and bind them together
+params_df <- do.call(rbind, lapply(params, function(x) {
+  data.frame(Parameter = x$Parameter, Value = x$Value, stringsAsFactors = FALSE)
+}))
+
+datatable(
+  params_df,
+  options = list(pageLength = 10),
+  rownames = TRUE,
+)
+
+#write.csv(params_df, file="./output/data/03.2_clustering/03.2_SI_clustering_summary.csv", row.names = FALSE)
+```
+
+## Output files
+
+This table describes the output files produced by this document.
+
+```{r output, echo=TRUE, eval=FALSE, cache=FALSE}
+saved_files <- extract_saved_files("./analysis/03.2_clustering.qmd")
+print(saved_files)
+write.csv(saved_files, file = paste0(proj_dir, "/output/data/03.2_clustering/03.2_SI_saved_files_summary.csv"))
+```
+
+```{r output_print, echo=TRUE, eval=TRUE, cache=FALSE}
+saved_files <- read.csv(file = paste0(proj_dir, "/output/data/03.2_clustering/03.2_SI_saved_files_summary.csv"))
+params <- jsonlite::toJSON(saved_files, pretty = TRUE)
+knitr::kable(jsonlite::fromJSON(params))
+```
+
+# Session information
+
+```{r session-info, cache = FALSE}
+devtools::session_info()
+```
+
