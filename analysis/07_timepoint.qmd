@@ -1,5 +1,5 @@
 ---
-title: "Macrophages"
+title: "Time point analyses"
 format:
   html:
     theme: Default
@@ -11,9 +11,9 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-DOCNAME <- "06_macs"
+DOCNAME <- "07_timepoint"
 NOW <- Sys.time()
-script_number <- "06_"
+script_number <- "07_"
 project <- "SI"
 tag <- paste0(script_number,project)
 
@@ -91,8 +91,8 @@ library(EnhancedVolcano)
 
 ```{r load, cache=FALSE}
 proj_dir <- "/Users/nami/Desktop/sterile_inflammation/"
-out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/06_macs/"
-plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/06_macs/"
+out_data_dir <- "/Users/nami/Desktop/sterile_inflammation/output/data/07_timepoint/"
+plots_dir <- "/Users/nami/Desktop/sterile_inflammation/output/plots/07_timepoint/"
 sobj_dir <- "/Users/nami/Desktop/sterile_inflammation/output/processed/"
 source(paste0(proj_dir,"/functions/universal.R"))
 load(paste0(sobj_dir,"03.2_SI_clean_sobj.Robj"))
@@ -106,11 +106,11 @@ f <- future({ expr })  ## Launch a future with large objects
 
 # Introduction
 
-In this document, we are going to look at macrophages subsetted on the basis of timepoint.
+In this document, we are going to look at all cell types subsetted on the basis of timepoint.
 
 ```{r subset, cache=FALSE, eval=TRUE}
-macs <- subset(seurat_obj, subset = celltype == "")
-macs_0h <- subset(seurat_obj, subset = time_point == "0h")
-macs_4h <- subset(seurat_obj, subset = time_point == "4h")
-macs_7h <- subset(seurat_obj, subset = time_point == "7h")
+seurat_0h <- subset(seurat_obj, subset = time_point == "0h")
+seurat_4h <- subset(seurat_obj, subset = time_point == "4h")
+seurat_7h <- subset(seurat_obj, subset = time_point == "7h")
 ```
+
